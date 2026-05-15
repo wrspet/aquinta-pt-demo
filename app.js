@@ -8,15 +8,14 @@ const API_KEY  = "sk_Kqb65HTIDXaHc2TlNmvWugo4qRHjDo9fgFVWJRkWveU";
 // STATE
 // ─────────────────────────────────────────────────────────────────────────────
 const state = {
-  petData:         {},
-  calcResult:      null,
-  calcId:          null,
-  period:          "fortnight",   // "fortnight" | "monthly"
-  freight:         null,
-  // editing
-  editing:         false,
-  selectedIds:     new Set(),     // diets toggled on during edit
-  mixPercentage:   100,
+  petData:       {},
+  calcResult:    null,
+  calcId:        null,
+  period:        "fortnight",   // "fortnight" | "monthly"
+  freight:       null,
+  editing:       false,
+  selectedIds:   new Set(),
+  mixPercentage: 100,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,9 +97,8 @@ document.getElementById("form-pet").addEventListener("submit", async e => {
     state.calcResult = result;
     state.calcId = result.calc_id;
     state.editing = false;
-    // pre-select all diets from calc
-    state.selectedIds = new Set((result.plans?.["300"] || []).map(p => p.id));
     state.mixPercentage = 100;
+    state.selectedIds = new Set((result.plans?.["300"] || []).map(p => p.id));
     renderResults();
     showStep("step-plans");
     if (cep) loadFreight();
@@ -112,42 +110,97 @@ document.getElementById("form-pet").addEventListener("submit", async e => {
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 2 — RENDER RESULTS
 // ─────────────────────────────────────────────────────────────────────────────
-function getVariant(product) {
-  return (product.variants || []).find(v => v.percentage === state.mixPercentage)
-      || product.variants?.[0];
-}
 
-function getPriceAndPacks(variant) {
-  if (state.period === "monthly") return { price: variant?.monthly_price, packs: variant?.monthly_packs };
-  return { price: variant?.fortnight_price, packs: variant?.fortnight_packs };
+// Retorna os dados de uma dieta para o período seleccionado
+// Usa distribution_summary (15d default) ou variants para mensal
+function getDietData(productId) {
+  const result = state.calcResult;
+  const plans300 = result?.plans?.["300"] || [];
+  const product  = plans300.find(p => p.id === productId);
+  if (!product) return null;
+
+  const variant  = (product.variants || []).find(v => v.percentage === state.mixPercentage)
+                || product.variants?.[0];
+
+  // distribution_summary.diets tem os dados mais completos (para 15d/período actual do calc)
+  const distDiets = result?.distribution_summary?.diets || [];
+  const distDiet  = distDiets.find(d => d.product_id === productId);
+
+  if (state.period === "monthly") {
+    return {
+      title:          product.title || product.name,
+      daily_grams:    variant?.daily_grams,
+      daily_measures: variant?.daily_measures,
+      packs:          variant?.monthly_packs,
+      estimated_days: variant?.monthly_days_amount,
+      subtotal:       variant?.monthly_price_discount ?? variant?.monthly_price,
+      kcal_per_kg:    product.product_energy,
+      period_label:   "30 dias",
+    };
+  }
+
+  // fortnight — usa distribution_summary se disponível (mais preciso)
+  return {
+    title:          product.title || product.name,
+    daily_grams:    distDiet?.grams_per_day    ?? variant?.daily_grams,
+    daily_measures: distDiet?.measures_per_day ?? variant?.daily_measures,
+    packs:          distDiet?.packs            ?? variant?.fortnight_packs,
+    estimated_days: distDiet?.estimated_days   ?? variant?.fortnight_days_amount,
+    subtotal:       distDiet?.subtotal_discounted ?? variant?.fortnight_price_discount ?? variant?.fortnight_price,
+    kcal_per_kg:    product.product_energy,
+    period_label:   "15 dias",
+  };
 }
 
 function renderResults() {
-  const result = state.calcResult;
+  const result   = state.calcResult;
   const plans300 = result?.plans?.["300"] || [];
+  const totals   = result?.distribution_summary?.totals || {};
+  const summary  = result?.summary?.distribution_totals || {};
 
   document.getElementById("result-pet-name").textContent = state.petData.pet_name || "o teu pet";
   document.getElementById("result-calories").textContent =
-    `${Math.round(result?.calories || 0)} kcal/dia`;
+    `${Math.round(result?.calories || 0)} kcal/dia necessárias`;
 
   const grid = document.getElementById("plans-grid");
   grid.innerHTML = "";
 
   plans300.forEach(product => {
-    const variant = getVariant(product);
-    const { price, packs } = getPriceAndPacks(variant);
+    const d = getDietData(product.id);
+    if (!d) return;
     const isSelected = state.selectedIds.has(product.id);
 
     const card = document.createElement("div");
-    card.className = "plan-card" + (state.editing ? " editable" : "") + (isSelected ? " selected" : " deselected");
+    card.className = "plan-card"
+      + (state.editing ? " editable" : "")
+      + (isSelected ? " selected" : " deselected");
     card.dataset.productId = product.id;
 
     card.innerHTML = `
       <div class="check">✓</div>
-      <div class="diet-name">${product.title || product.name}</div>
-      <div class="diet-grams">${variant?.daily_grams ? Math.round(variant.daily_grams) + "g/dia" : ""}</div>
-      <div class="diet-packs">${packs ?? "—"} pack${packs !== 1 ? "s" : ""} × 300g</div>
-      <div class="diet-price">${price != null ? price.toFixed(2) : "—"} <span>€</span></div>
+      <div class="diet-header">
+        <div class="diet-name">${d.title}</div>
+        ${d.kcal_per_kg ? `<div class="diet-kcal">${d.kcal_per_kg} kcal/kg</div>` : ""}
+      </div>
+      <div class="diet-stats">
+        <div class="stat">
+          <span class="stat-val">${d.daily_grams != null ? Math.round(d.daily_grams) + "g" : "—"}</span>
+          <span class="stat-label">por dia</span>
+        </div>
+        <div class="stat">
+          <span class="stat-val">${d.daily_measures != null ? d.daily_measures : "—"}</span>
+          <span class="stat-label">medidas/dia</span>
+        </div>
+        <div class="stat">
+          <span class="stat-val">${d.packs != null ? Math.ceil(d.packs) : "—"}</span>
+          <span class="stat-label">packs 300g</span>
+        </div>
+        ${d.estimated_days != null ? `<div class="stat"><span class="stat-val">${Math.round(d.estimated_days)}d</span><span class="stat-label">duração</span></div>` : ""}
+      </div>
+      <div class="diet-price">
+        ${d.subtotal != null ? d.subtotal.toFixed(2) + " €" : "—"}
+        <span>/ ${d.period_label}</span>
+      </div>
     `;
 
     if (state.editing) {
@@ -157,18 +210,27 @@ function renderResults() {
     grid.appendChild(card);
   });
 
-  // edit controls visibility
-  document.getElementById("edit-controls").style.display = state.editing ? "block" : "none";
-  document.getElementById("btn-edit").style.display = state.editing ? "none" : "inline-block";
-  document.getElementById("btn-confirm-edit").style.display = state.editing ? "inline-block" : "none";
-  document.getElementById("btn-cancel-edit").style.display = state.editing ? "inline-block" : "none";
+  // resumo total
+  const totalPacks = state.period === "monthly"
+    ? plans300.filter(p => state.selectedIds.has(p.id)).reduce((s, p) => {
+        const v = (p.variants || []).find(vv => vv.percentage === state.mixPercentage) || p.variants?.[0];
+        return s + (v?.monthly_packs || 0);
+      }, 0)
+    : (totals.packs ?? summary.packs ?? 0);
+
+  document.getElementById("total-packs").textContent = totalPacks ? Math.ceil(totalPacks) + " packs no total" : "";
+
+  document.getElementById("edit-controls").style.display     = state.editing ? "block" : "none";
+  document.getElementById("btn-edit").style.display          = state.editing ? "none" : "inline-block";
+  document.getElementById("btn-confirm-edit").style.display  = state.editing ? "inline-block" : "none";
+  document.getElementById("btn-cancel-edit").style.display   = state.editing ? "inline-block" : "none";
 
   updateTotal();
 }
 
 function toggleDiet(productId) {
   if (state.selectedIds.has(productId)) {
-    if (state.selectedIds.size <= 1) return; // pelo menos 1 dieta
+    if (state.selectedIds.size <= 1) return;
     state.selectedIds.delete(productId);
   } else {
     state.selectedIds.add(productId);
@@ -176,7 +238,7 @@ function toggleDiet(productId) {
   renderResults();
 }
 
-// TABS período
+// TABS
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
@@ -186,16 +248,14 @@ document.querySelectorAll(".tab").forEach(tab => {
   });
 });
 
-// Botão EDITAR
+// Editar
 document.getElementById("btn-edit").addEventListener("click", () => {
   state.editing = true;
   renderResults();
 });
 
-// Cancelar edição
 document.getElementById("btn-cancel-edit").addEventListener("click", () => {
   state.editing = false;
-  // repõe seleção original
   state.selectedIds = new Set((state.calcResult?.plans?.["300"] || []).map(p => p.id));
   state.mixPercentage = 100;
   document.querySelectorAll("#mix-options .opt").forEach(b => {
@@ -204,7 +264,6 @@ document.getElementById("btn-cancel-edit").addEventListener("click", () => {
   renderResults();
 });
 
-// Confirmar edição → recalculate
 document.getElementById("btn-confirm-edit").addEventListener("click", async () => {
   showLoading("A recalcular o plano...");
   try {
@@ -224,7 +283,6 @@ document.getElementById("btn-confirm-edit").addEventListener("click", async () =
   }
 });
 
-// Mix feeding (só visível no modo edição)
 bindOptions("mix-options", v => {
   state.mixPercentage = parseInt(v);
   renderResults();
@@ -241,7 +299,7 @@ async function loadFreight() {
     state.freight = f;
     const box = document.getElementById("freight-info");
     box.style.display = "block";
-    box.textContent = `🚚 ${cep}: ${f.value?.toFixed(2) ?? "—"} € · ${f.carrier_name || ""} · ${f.prazo ?? "—"} dias úteis`;
+    box.innerHTML = `🚚 <strong>${f.carrier_name || "Envio"}</strong> para ${cep} — <strong>${f.value?.toFixed(2) ?? "—"} €</strong> · prazo ${f.prazo ?? "—"} dias úteis`;
     updateTotal();
   } catch (err) {
     console.warn("Freight:", err.message);
@@ -256,18 +314,15 @@ function updateTotal() {
   let total = 0;
   plans300.forEach(p => {
     if (!state.selectedIds.has(p.id)) return;
-    const { price } = getPriceAndPacks(getVariant(p));
-    if (price) total += price;
+    const d = getDietData(p.id);
+    if (d?.subtotal) total += d.subtotal;
   });
   if (state.freight?.value) total += state.freight.value;
 
   const periodLabel = state.period === "monthly" ? "30 dias" : "15 dias";
-  document.getElementById("total-label").textContent =
-    `${total.toFixed(2)} € · ${periodLabel}` +
-    (state.freight?.value ? ` (incl. envio ${state.freight.value.toFixed(2)} €)` : "");
+  document.getElementById("total-label").textContent = `${total.toFixed(2)} € · ${periodLabel}`;
 }
 
-// Encomendar
 document.getElementById("btn-order").addEventListener("click", () => {
   buildOrderSummary();
   showStep("step-order");
@@ -283,17 +338,21 @@ function buildOrderSummary() {
 
   let subtotal = 0;
   const dietRows = selected.map(p => {
-    const { price, packs } = getPriceAndPacks(getVariant(p));
-    subtotal += price || 0;
-    return `<div class="row-info"><span>${p.title || p.name}</span><span>${packs} packs · ${price?.toFixed(2) ?? "—"} €</span></div>`;
+    const d = getDietData(p.id);
+    subtotal += d?.subtotal || 0;
+    return `<div class="row-info">
+      <span>${d.title}</span>
+      <span>${d.daily_grams != null ? Math.round(d.daily_grams) + "g/dia · " : ""}${Math.ceil(d.packs)} packs · ${d.subtotal?.toFixed(2) ?? "—"} €</span>
+    </div>`;
   }).join("");
 
   const freight = state.freight?.value || 0;
-  const total = subtotal + freight;
+  const total   = subtotal + freight;
 
   document.getElementById("order-summary").innerHTML = `
     <div class="row-info"><span>Pet</span><span>${state.petData.pet_name}</span></div>
     <div class="row-info"><span>Tutor</span><span>${state.petData.partner_name}</span></div>
+    <div class="row-info"><span>E-mail</span><span>${state.petData.partner_email}</span></div>
     <div class="row-info"><span>Período</span><span>${periodLabel}</span></div>
     <div class="row-info"><span>Mix feeding</span><span>${state.mixPercentage}% Aquinta</span></div>
     ${dietRows}
@@ -303,9 +362,6 @@ function buildOrderSummary() {
 }
 
 document.getElementById("btn-pay").addEventListener("click", async () => {
-  const plans300 = state.calcResult?.plans?.["300"] || [];
-  const selected = plans300.filter(p => state.selectedIds.has(p.id));
-
   showLoading("A criar encomenda e gerar link de pagamento...");
   try {
     const payload = {
@@ -323,7 +379,7 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
     if (state.petData.cep) payload.cep = state.petData.cep;
 
     const order = await api("POST", "/api/v1/orders", payload);
-    const link = order.payment_link || order.link_stripe;
+    const link  = order.payment_link || order.link_stripe;
     if (link) {
       window.location.href = link;
     } else {
