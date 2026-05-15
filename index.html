@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aquinta — Plano Nutricional para o teu Pet</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- STEP 1: Dados do pet -->
+  <div id="step-pet" class="step active">
+    <div class="card">
+      <div class="logo">🐾 Aquinta</div>
+      <h1>Plano Nutricional Personalizado</h1>
+      <p class="subtitle">Preenche os dados do teu pet para calcularmos o plano ideal.</p>
+
+      <form id="form-pet">
+        <div class="field">
+          <label>Nome do pet</label>
+          <input type="text" id="pet_name" placeholder="Ex: Bolinha" required />
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Data de nascimento</label>
+            <input type="date" id="birth_date" required />
+          </div>
+          <div class="field">
+            <label>Peso actual (kg)</label>
+            <input type="number" id="weight" step="0.1" min="0.5" max="100" placeholder="Ex: 4.5" required />
+          </div>
+        </div>
+        <div class="field">
+          <label>Porte</label>
+          <div class="options" id="size-options">
+            <button type="button" class="opt" data-val="mini">Mini<span>&lt;5 kg</span></button>
+            <button type="button" class="opt" data-val="small">Pequeno<span>5–10 kg</span></button>
+            <button type="button" class="opt" data-val="medium">Médio<span>11–25 kg</span></button>
+            <button type="button" class="opt" data-val="big">Grande<span>26–45 kg</span></button>
+            <button type="button" class="opt" data-val="giant">Gigante<span>&gt;45 kg</span></button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Condição corporal</label>
+            <div class="options" id="fitness-options">
+              <button type="button" class="opt" data-val="skinny">Magro</button>
+              <button type="button" class="opt selected" data-val="normal">Normal</button>
+              <button type="button" class="opt" data-val="fat">Gordo</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Nível de actividade</label>
+            <div class="options" id="activity-options">
+              <button type="button" class="opt" data-val="inactive">Sedentário</button>
+              <button type="button" class="opt selected" data-val="normal">Normal</button>
+              <button type="button" class="opt" data-val="active">Activo</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Castrado?</label>
+          <div class="options" id="castrated-options">
+            <button type="button" class="opt" data-val="true">Sim</button>
+            <button type="button" class="opt selected" data-val="false">Não</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>E-mail do tutor</label>
+            <input type="email" id="partner_email" placeholder="tutor@email.com" required />
+          </div>
+          <div class="field">
+            <label>Nome completo</label>
+            <input type="text" id="partner_name" placeholder="Nome Apelido" required />
+          </div>
+        </div>
+        <div class="field">
+          <label>Telefone</label>
+          <input type="tel" id="partner_phone" placeholder="+351912345678" required />
+        </div>
+        <div class="field">
+          <label>Código postal (opcional — calcula frete)</label>
+          <input type="text" id="cep" placeholder="Ex: 1000-001" />
+        </div>
+        <button type="submit" class="btn-primary" id="btn-calc">
+          Calcular Plano
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- STEP 2: Resultados + escolha de dieta -->
+  <div id="step-plans" class="step">
+    <div class="card wide">
+      <button class="btn-back" onclick="goBack('step-pet')">← Voltar</button>
+      <div class="logo">🐾 Aquinta</div>
+      <h2>Plano para <span id="result-pet-name"></span></h2>
+      <p class="subtitle" id="result-calories"></p>
+
+      <div class="tabs">
+        <button class="tab active" data-period="fortnight">Quinzenal (15 dias)</button>
+        <button class="tab" data-period="monthly">Mensal (30 dias)</button>
+      </div>
+
+      <div id="plans-grid" class="plans-grid"></div>
+
+      <div id="mix-section" class="mix-section" style="display:none">
+        <h3>Mix feeding</h3>
+        <p>Que percentagem da dieta diária é coberta pela Aquinta? O restante é completado com ração do cliente.</p>
+        <div class="options" id="mix-options">
+          <button type="button" class="opt selected" data-val="100">100% Aquinta<span>dieta completa</span></button>
+          <button type="button" class="opt" data-val="50">50% Aquinta<span>+ 50% ração</span></button>
+          <button type="button" class="opt" data-val="25">25% Aquinta<span>+ 75% ração</span></button>
+        </div>
+      </div>
+
+      <div id="freight-info" class="freight-info" style="display:none"></div>
+
+      <div id="summary-bar" class="summary-bar" style="display:none">
+        <div>
+          <strong id="summary-diet"></strong>
+          <span id="summary-detail"></span>
+        </div>
+        <button class="btn-primary" id="btn-order">Encomendar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: Confirmação + pagamento -->
+  <div id="step-order" class="step">
+    <div class="card">
+      <button class="btn-back" onclick="goBack('step-plans')">← Voltar</button>
+      <div class="logo">🐾 Aquinta</div>
+      <h2>Confirmar Encomenda</h2>
+
+      <div id="order-summary" class="order-summary"></div>
+
+      <button class="btn-primary" id="btn-pay">
+        Pagar com Stripe →
+      </button>
+      <p class="hint">Serás redireccionado para o checkout seguro da Stripe.</p>
+    </div>
+  </div>
+
+  <!-- STEP 4: Loading -->
+  <div id="step-loading" class="step">
+    <div class="card center">
+      <div class="spinner"></div>
+      <p id="loading-msg">A calcular plano...</p>
+    </div>
+  </div>
+
+  <!-- STEP 5: Erro -->
+  <div id="step-error" class="step">
+    <div class="card center">
+      <div class="error-icon">⚠️</div>
+      <h2>Ocorreu um erro</h2>
+      <p id="error-msg"></p>
+      <button class="btn-primary" onclick="goBack('step-pet')">Tentar novamente</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
