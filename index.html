@@ -14,7 +14,6 @@
       <div class="logo">🐾 Aquinta</div>
       <h1>Plano Nutricional Personalizado</h1>
       <p class="subtitle">Preenche os dados do teu pet para calcularmos o plano ideal.</p>
-
       <form id="form-pet">
         <div class="field">
           <label>Nome do pet</label>
@@ -75,22 +74,22 @@
             <input type="text" id="partner_name" placeholder="Nome Apelido" required />
           </div>
         </div>
-        <div class="field">
-          <label>Telefone</label>
-          <input type="tel" id="partner_phone" placeholder="+351912345678" required />
+        <div class="row">
+          <div class="field">
+            <label>Telefone</label>
+            <input type="tel" id="partner_phone" placeholder="+351912345678" required />
+          </div>
+          <div class="field">
+            <label>Código postal <span style="font-weight:400;text-transform:none">(frete automático)</span></label>
+            <input type="text" id="cep" placeholder="Ex: 1000-001" />
+          </div>
         </div>
-        <div class="field">
-          <label>Código postal (opcional — calcula frete)</label>
-          <input type="text" id="cep" placeholder="Ex: 1000-001" />
-        </div>
-        <button type="submit" class="btn-primary" id="btn-calc">
-          Calcular Plano
-        </button>
+        <button type="submit" class="btn-primary">Calcular Plano</button>
       </form>
     </div>
   </div>
 
-  <!-- STEP 2: Resultados + escolha de dieta -->
+  <!-- STEP 2: Resultados -->
   <div id="step-plans" class="step">
     <div class="card wide">
       <button class="btn-back" onclick="goBack('step-pet')">← Voltar</button>
@@ -105,45 +104,50 @@
 
       <div id="plans-grid" class="plans-grid"></div>
 
-      <div id="mix-section" class="mix-section" style="display:none">
-        <h3>Mix feeding</h3>
-        <p>Que percentagem da dieta diária é coberta pela Aquinta? O restante é completado com ração do cliente.</p>
-        <div class="options" id="mix-options">
-          <button type="button" class="opt selected" data-val="100">100% Aquinta<span>dieta completa</span></button>
-          <button type="button" class="opt" data-val="50">50% Aquinta<span>+ 50% ração</span></button>
-          <button type="button" class="opt" data-val="25">25% Aquinta<span>+ 75% ração</span></button>
+      <!-- Controlos de edição (só visíveis em modo edição) -->
+      <div id="edit-controls" style="display:none">
+        <div class="edit-hint">Clica nas dietas para seleccionar ou remover. Podes também ajustar o mix feeding.</div>
+        <div class="mix-section">
+          <h3>Mix feeding</h3>
+          <p>Percentagem da dieta diária coberta pela Aquinta — o restante é ração do cliente.</p>
+          <div class="options" id="mix-options">
+            <button type="button" class="opt selected" data-val="100">100%<span>dieta completa</span></button>
+            <button type="button" class="opt" data-val="50">50%<span>+ 50% ração</span></button>
+            <button type="button" class="opt" data-val="25">25%<span>+ 75% ração</span></button>
+          </div>
         </div>
       </div>
 
       <div id="freight-info" class="freight-info" style="display:none"></div>
 
-      <div id="summary-bar" class="summary-bar" style="display:none">
-        <div>
-          <strong id="summary-diet"></strong>
-          <span id="summary-detail"></span>
+      <!-- Barra inferior -->
+      <div class="bottom-bar">
+        <div class="total-line">
+          <span class="total-amount" id="total-label"></span>
         </div>
-        <button class="btn-primary" id="btn-order">Encomendar →</button>
+        <div class="bottom-actions">
+          <button class="btn-secondary" id="btn-edit">✏️ Editar plano</button>
+          <button class="btn-secondary" id="btn-cancel-edit" style="display:none">✕ Cancelar</button>
+          <button class="btn-primary inline" id="btn-confirm-edit" style="display:none">Recalcular</button>
+          <button class="btn-primary inline" id="btn-order">Encomendar →</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- STEP 3: Confirmação + pagamento -->
+  <!-- STEP 3: Confirmação -->
   <div id="step-order" class="step">
     <div class="card">
       <button class="btn-back" onclick="goBack('step-plans')">← Voltar</button>
       <div class="logo">🐾 Aquinta</div>
       <h2>Confirmar Encomenda</h2>
-
       <div id="order-summary" class="order-summary"></div>
-
-      <button class="btn-primary" id="btn-pay">
-        Pagar com Stripe →
-      </button>
+      <button class="btn-primary" id="btn-pay">Pagar com Stripe →</button>
       <p class="hint">Serás redireccionado para o checkout seguro da Stripe.</p>
     </div>
   </div>
 
-  <!-- STEP 4: Loading -->
+  <!-- STEP: Loading -->
   <div id="step-loading" class="step">
     <div class="card center">
       <div class="spinner"></div>
@@ -151,7 +155,7 @@
     </div>
   </div>
 
-  <!-- STEP 5: Erro -->
+  <!-- STEP: Erro -->
   <div id="step-error" class="step">
     <div class="card center">
       <div class="error-icon">⚠️</div>
