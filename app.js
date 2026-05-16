@@ -267,12 +267,15 @@ document.getElementById("btn-cancel-edit").addEventListener("click", () => {
 document.getElementById("btn-confirm-edit").addEventListener("click", async () => {
   showLoading("A recalcular o plano...");
   try {
-    const result = await api("POST", "/api/v1/calc/recalculate", {
+    const raw = await api("POST", "/api/v1/calc/recalculate", {
       calc_id:         state.calcId,
       products_id:     [...state.selectedIds],
       mix_percentages: [state.mixPercentage],
     });
-    if (result.calc_id) state.calcId = result.calc_id;
+    // recalculate envolve resposta em { request, result, calc_id, ... }
+    const result = raw.result || raw;
+    const newCalcId = raw.calc_id || result.calc_id;
+    if (newCalcId) state.calcId = newCalcId;
     state.calcResult = result;
     state.editing = false;
     renderResults();
