@@ -269,7 +269,7 @@ document.getElementById("btn-confirm-edit").addEventListener("click", async () =
   try {
     const result = await api("POST", "/api/v1/calc/recalculate", {
       calc_id:         state.calcId,
-      product_ids:     [...state.selectedIds],
+      products_id:     [...state.selectedIds],
       mix_percentages: [state.mixPercentage],
     });
     if (result.calc_id) state.calcId = result.calc_id;
@@ -366,7 +366,7 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
   try {
     const payload = {
       calc_id:         state.calcId,
-      product_ids:     [...state.selectedIds],
+      products_id:     [...state.selectedIds],
       mix_percentages: [state.mixPercentage],
       period:          state.period === "monthly" ? 30 : 15,
       partner_email:   state.petData.partner_email,
