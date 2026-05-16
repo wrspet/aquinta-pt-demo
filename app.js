@@ -7,8 +7,8 @@ const REFACTOR_BASE = "https://stg.meajudamaia.com/v2";
 
 // Tokens por tenant — identificam o tenant no backend (sem header company_id)
 const TENANT_TOKENS = {
-  pt: "demo_aquinta_pt_9",
-  br: "demo_aquinta_br_1",
+  pt: "Oja6HPlX0mGrDIklMTAPxeogI1Hu95Y72U5G5ELbA18",
+  br: "vfOAKN-kcHWKSO8N4b884gSZLvAWtJIScSaS9VAfKSk",
 };
 
 // Tenant activo — definido pelo selector PT/BR no admin
