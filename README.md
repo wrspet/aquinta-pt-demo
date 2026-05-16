@@ -26,13 +26,13 @@ Guia passo a passo para integrar o fluxo completo da API Aquinta Portugal:
 
 ```
 Base URL:  https://stg.meajudamaia.com
-API Key:   sk_Kqb65HTIDXaHc2TlNmvWugo4qRHjDo9fgFVWJRkWveU
+API Key:   SUA_API_KEY_AQUI
 ```
 
 **Todas as chamadas usam este header:**
 
 ```http
-Authorization: Bearer sk_Kqb65HTIDXaHc2TlNmvWugo4qRHjDo9fgFVWJRkWveU
+Authorization: Bearer SUA_API_KEY_AQUI
 Content-Type: application/json
 ```
 
@@ -414,7 +414,7 @@ const state = {
 
 ```js
 const API_BASE = "https://stg.meajudamaia.com"
-const API_KEY  = "sk_Kqb65HTIDXaHc2TlNmvWugo4qRHjDo9fgFVWJRkWveU"
+const API_KEY  = "SUA_API_KEY_AQUI"
 
 const headers = {
   "Authorization": `Bearer ${API_KEY}`,
@@ -553,7 +553,7 @@ async function fluxoCompleto() {
 import httpx
 
 API_BASE = "https://stg.meajudamaia.com"
-API_KEY  = "sk_Kqb65HTIDXaHc2TlNmvWugo4qRHjDo9fgFVWJRkWveU"
+API_KEY  = "SUA_API_KEY_AQUI"
 HEADERS  = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 
 
@@ -677,7 +677,7 @@ if __name__ == "__main__":
 ### cURL (passo a passo)
 
 ```bash
-API_KEY="sk_Kqb65HTIDXaHc2TlNmvWugo4qRHjDo9fgFVWJRkWveU"
+API_KEY="SUA_API_KEY_AQUI"
 BASE="https://stg.meajudamaia.com"
 
 # ── 1. Calcular ───────────────────────────────────────────────────────────────
@@ -764,7 +764,7 @@ print('payment_link:', o.get('payment_link') or o.get('link_stripe'))
 | `502 company inconsistencies pricelist` | Pricelist de empresa errada | Configurado automaticamente pelo gateway via tenant config |
 | Resposta do recalculate sem `plans` | Leitura da raiz em vez de `raw.result` | Usar `raw.result \|\| raw` |
 | `payment_link` vazio ou nulo | `raw.order.payment_link` em vez de `raw.payment_link` | Usar `(raw.order \|\| raw).payment_link` |
-| `401 API key inválida ou revogada` | API key errada ou inactiva | Verificar o header `Authorization: Bearer sk_...` |
+| `401 API key inválida ou revogada` | API key errada ou inactiva | Verificar o header `Authorization: Bearer <SUA_API_KEY>` |
 
 ---
 
