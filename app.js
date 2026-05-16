@@ -78,8 +78,12 @@ document.getElementById("form-pet").addEventListener("submit", async e => {
     activity:    sel.activity,
     castrated:   sel.castrated === "true",
     pet_name:    document.getElementById("pet_name").value.trim(),
+    tutor_name:  document.getElementById("partner_name").value.trim(),
     tutor_email: document.getElementById("partner_email").value.trim(),
+    phone:       document.getElementById("partner_phone").value.trim(),
   };
+  const nif = document.getElementById("nif").value.trim();
+  if (nif) pet.nif = nif;
   const cep = document.getElementById("cep").value.trim();
   if (cep) pet.cep = cep;
 
@@ -384,8 +388,10 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
     };
     if (state.petData.cep) payload.cep = state.petData.cep;
 
-    const order = await api("POST", "/api/v1/orders", payload);
-    const link  = order.payment_link || order.link_stripe;
+    const raw   = await api("POST", "/api/v1/orders", payload);
+    // gateway retorna { order: { payment_link, link_stripe, ... }, calc: {...} }
+    const o     = raw.order || raw;
+    const link  = o.payment_link || o.link_stripe;
     if (link) {
       window.location.href = link;
     } else {
