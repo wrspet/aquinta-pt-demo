@@ -16,6 +16,7 @@ const state = {
   editing:       false,
   selectedIds:   new Set(),
   mixPercentage: 100,
+  couponCode:    null,          // código de cupão aplicado
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -331,8 +332,46 @@ function updateTotal() {
 }
 
 document.getElementById("btn-order").addEventListener("click", () => {
+  state.couponCode = null;
+  document.getElementById("coupon-input").value = "";
+  document.getElementById("coupon-feedback").style.display = "none";
   buildOrderSummary();
   showStep("step-order");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUPÃO
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById("btn-apply-coupon").addEventListener("click", async () => {
+  const code = document.getElementById("coupon-input").value.trim().toUpperCase();
+  const fb   = document.getElementById("coupon-feedback");
+  if (!code) return;
+
+  fb.className = "coupon-feedback";
+  fb.style.display = "block";
+  fb.textContent = "A verificar cupão...";
+
+  try {
+    // Faz um recálculo rápido só para validar o cupão e ver o desconto
+    const raw = await api("POST", "/api/v1/calc/recalculate", {
+      calc_id:         state.calcId,
+      products_id:     [...state.selectedIds],
+      mix_percentages: [state.mixPercentage],
+      coupon_code:     code,
+    });
+    const result = raw.result || raw;
+    const newCalcId = raw.calc_id || result.calc_id;
+    if (newCalcId) state.calcId = newCalcId;
+    state.calcResult = result;
+    state.couponCode = code;
+    fb.className = "coupon-feedback ok";
+    fb.textContent = `Cupão "${code}" aplicado com sucesso!`;
+    buildOrderSummary();
+  } catch (err) {
+    state.couponCode = null;
+    fb.className = "coupon-feedback err";
+    fb.textContent = `Cupão inválido ou expirado.`;
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -386,7 +425,8 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
       order_type:      "trial",
       delivery_number: 1,
     };
-    if (state.petData.cep) payload.cep = state.petData.cep;
+    if (state.petData.cep)  payload.cep         = state.petData.cep;
+    if (state.couponCode)   payload.coupon_code  = state.couponCode;
 
     const raw   = await api("POST", "/api/v1/orders", payload);
     // gateway retorna { order: { payment_link, link_stripe, ... }, calc: {...} }

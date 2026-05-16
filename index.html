@@ -149,6 +149,11 @@
       <div class="logo">🐾 Aquinta</div>
       <h2>Confirmar Encomenda</h2>
       <div id="order-summary" class="order-summary"></div>
+      <div class="coupon-row">
+        <input type="text" id="coupon-input" placeholder="Tens um cupão? (ex: TESTER35)" autocomplete="off" />
+        <button type="button" id="btn-apply-coupon" class="btn-secondary">Aplicar</button>
+      </div>
+      <div id="coupon-feedback" class="coupon-feedback" style="display:none"></div>
       <button class="btn-primary" id="btn-pay">Pagar com Stripe →</button>
       <p class="hint">Serás redireccionado para o checkout seguro da Stripe.</p>
     </div>

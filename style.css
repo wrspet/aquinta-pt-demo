@@ -195,6 +195,33 @@ h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
 
 .error-icon { font-size: 3rem; margin-bottom: 16px; }
 
+.coupon-row {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 8px;
+}
+.coupon-row input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: .95rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.coupon-row input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+.coupon-feedback {
+  font-size: .9rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.coupon-feedback.ok  { background: #d8f3dc; color: #1b4332; }
+.coupon-feedback.err { background: #ffe8e8; color: #7f1d1d; }
+
 @media (max-width: 560px) {
   .card { padding: 24px 16px; }
   .row { grid-template-columns: 1fr; }
