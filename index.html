@@ -177,6 +177,55 @@
     </div>
   </div>
 
+  <!-- Botão flutuante Admin -->
+  <button id="admin-toggle" title="Admin" onclick="toggleAdmin()">⚙</button>
+
+  <!-- PAINEL ADMIN -->
+  <div id="admin-panel" class="admin-panel" style="display:none">
+    <div class="admin-header">
+      <h2>⚙ Admin — Tenant Config</h2>
+      <button class="admin-close" onclick="toggleAdmin()">✕</button>
+    </div>
+
+    <div class="admin-section">
+      <h3>Tenant activo</h3>
+      <p class="admin-hint">O token identifica o tenant. Selecciona antes de calcular.</p>
+      <div class="server-toggle">
+        <label class="radio-opt">
+          <input type="radio" name="tenant" value="pt" id="tenant-pt" />
+          <span>🇵🇹 Portugal <code>demo_aquinta_pt_9</code></span>
+        </label>
+        <label class="radio-opt">
+          <input type="radio" name="tenant" value="br" id="tenant-br" />
+          <span>🇧🇷 Brasil <code>demo_aquinta_br_1</code></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <h3>Servidor</h3>
+      <div class="server-toggle">
+        <label class="radio-opt">
+          <input type="radio" name="server" value="https://stg.meajudamaia.com" id="srv-stable" />
+          <span>Stable <code>stg.meajudamaia.com</code></span>
+        </label>
+        <label class="radio-opt">
+          <input type="radio" name="server" value="https://stg.meajudamaia.com/v2" id="srv-refactor" />
+          <span>Refactor <code>stg.meajudamaia.com/v2</code></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <h3>Configuração de Tenants</h3>
+      <p class="admin-hint">Alterações aplicam-se em tempo real ao servidor de refactor. Persistem entre restarts.</p>
+      <div id="admin-tenants-loading" class="admin-spinner">A carregar...</div>
+      <div id="admin-tenants"></div>
+    </div>
+
+    <div id="admin-feedback" class="admin-feedback" style="display:none"></div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

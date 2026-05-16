@@ -1,8 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
-const API_BASE = "https://stg.meajudamaia.com";
-const API_KEY  = "sk_Kqb65HTIDXaHc2TlNmvWugo4qRHjDo9fgFVWJRkWveU";
+let API_BASE   = localStorage.getItem("admin_server") || "https://stg.meajudamaia.com";
+const ADMIN_TOKEN = "supersecrettoken123";
+const REFACTOR_BASE = "https://stg.meajudamaia.com/v2";
+
+// Tokens por tenant — identificam o tenant no backend (sem header company_id)
+const TENANT_TOKENS = {
+  pt: "demo_aquinta_pt_9",
+  br: "demo_aquinta_br_1",
+};
+
+// Tenant activo — definido pelo selector PT/BR no admin
+let activeTenantRegion = localStorage.getItem("admin_tenant") || "pt";
+let activeTenant = null;       // TenantConfig carregado do servidor
+let adminTenantConfigs = [];   // lista completa
+
+function activeToken() {
+  return TENANT_TOKENS[activeTenantRegion] || TENANT_TOKENS.pt;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE
@@ -19,13 +35,28 @@ const state = {
   couponCode:    null,          // código de cupão aplicado
 };
 
+// Mapa de paths: ops-gateway → refactor (quando API_BASE = REFACTOR_BASE)
+const REFACTOR_PATH_MAP = {
+  "/api/v1/calc":            "/calculate/json",
+  "/api/v1/calc/recalculate": "/recalculate/from-products",
+  "/api/v1/calc/freight":    "/cep/frete",
+  "/api/v1/orders":          "/pet/orders",
+};
+
+function resolvePath(path) {
+  if (API_BASE === REFACTOR_BASE && REFACTOR_PATH_MAP[path]) {
+    return REFACTOR_PATH_MAP[path];
+  }
+  return path;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API
 // ─────────────────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
-  const res = await fetch(API_BASE + path, {
+  const res = await fetch(API_BASE + resolvePath(path), {
     method,
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + API_KEY },
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + activeToken() },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json();
@@ -131,6 +162,9 @@ function getDietData(productId) {
   const distDiets = result?.distribution_summary?.diets || [];
   const distDiet  = distDiets.find(d => d.product_id === productId);
 
+  const fortnightDays = activeTenant?.fortnight_days ?? 15;
+  const monthlyDays   = activeTenant?.monthly_days   ?? 30;
+
   if (state.period === "monthly") {
     return {
       title:          product.title || product.name,
@@ -140,7 +174,7 @@ function getDietData(productId) {
       estimated_days: variant?.monthly_days_amount,
       subtotal:       variant?.monthly_price_discount ?? variant?.monthly_price,
       kcal_per_kg:    product.product_energy,
-      period_label:   "30 dias",
+      period_label:   `${monthlyDays} dias`,
     };
   }
 
@@ -153,7 +187,7 @@ function getDietData(productId) {
     estimated_days: distDiet?.estimated_days   ?? variant?.fortnight_days_amount,
     subtotal:       distDiet?.subtotal_discounted ?? variant?.fortnight_price_discount ?? variant?.fortnight_price,
     kcal_per_kg:    product.product_energy,
-    period_label:   "15 dias",
+    period_label:   `${fortnightDays} dias`,
   };
 }
 
@@ -327,7 +361,9 @@ function updateTotal() {
   });
   if (state.freight?.value) total += state.freight.value;
 
-  const periodLabel = state.period === "monthly" ? "30 dias" : "15 dias";
+  const fortnightDays = activeTenant?.fortnight_days ?? 15;
+  const monthlyDays   = activeTenant?.monthly_days   ?? 30;
+  const periodLabel = state.period === "monthly" ? `${monthlyDays} dias` : `${fortnightDays} dias`;
   document.getElementById("total-label").textContent = `${total.toFixed(2)} € · ${periodLabel}`;
 }
 
@@ -380,7 +416,9 @@ document.getElementById("btn-apply-coupon").addEventListener("click", async () =
 function buildOrderSummary() {
   const plans300 = state.calcResult?.plans?.["300"] || [];
   const selected = plans300.filter(p => state.selectedIds.has(p.id));
-  const periodLabel = state.period === "monthly" ? "30 dias" : "15 dias";
+  const fortnightDays = activeTenant?.fortnight_days ?? 15;
+  const monthlyDays   = activeTenant?.monthly_days   ?? 30;
+  const periodLabel = state.period === "monthly" ? `${monthlyDays} dias` : `${fortnightDays} dias`;
 
   let subtotal = 0;
   const dietRows = selected.map(p => {
@@ -414,7 +452,7 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
       calc_id:         state.calcId,
       products_id:     [...state.selectedIds],
       mix_percentages: [state.mixPercentage],
-      period:          state.period === "monthly" ? 30 : 15,
+      period:          state.period === "monthly" ? (activeTenant?.monthly_days ?? 30) : (activeTenant?.fortnight_days ?? 15),
       partner_email:   state.petData.partner_email,
       partner_name:    state.petData.partner_name,
       partner_phone:   state.petData.partner_phone,
@@ -441,3 +479,168 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
     showError("Erro ao criar encomenda: " + err.message);
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+function toggleAdmin() {
+  const panel = document.getElementById("admin-panel");
+  const open  = panel.style.display === "none";
+  panel.style.display = open ? "flex" : "none";
+  if (open) initAdmin();
+}
+
+function initAdmin() {
+  // Selector de tenant (PT/BR) — define o token activo
+  document.querySelectorAll('input[name="tenant"]').forEach(r => {
+    r.checked = r.value === activeTenantRegion;
+    r.addEventListener("change", () => {
+      activeTenantRegion = r.value;
+      localStorage.setItem("admin_tenant", r.value);
+      // Actualiza activeTenant com o config correspondente
+      activeTenant = adminTenantConfigs.find(t => t.region === activeTenantRegion) || null;
+      renderAdminTenants();
+      showAdminFeedback(`Tenant ${r.value.toUpperCase()} activo — token: ${activeToken()}`, "ok");
+    });
+  });
+
+  // Sync server radio buttons
+  const savedServer = localStorage.getItem("admin_server") || "https://stg.meajudamaia.com";
+  document.querySelectorAll('input[name="server"]').forEach(r => {
+    r.checked = r.value === savedServer;
+    r.addEventListener("change", () => {
+      API_BASE = r.value;
+      localStorage.setItem("admin_server", r.value);
+      showAdminFeedback(`Servidor activo: ${r.value}`, "ok");
+    });
+  });
+
+  loadAdminTenants();
+}
+
+async function loadAdminTenants() {
+  const loadingEl = document.getElementById("admin-tenants-loading");
+  const tenantsEl = document.getElementById("admin-tenants");
+  loadingEl.style.display = "block";
+  tenantsEl.innerHTML = "";
+
+  try {
+    const res = await fetch(REFACTOR_BASE + "/admin/tenants", {
+      headers: { "Authorization": "Bearer " + ADMIN_TOKEN }
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    adminTenantConfigs = await res.json();
+    activeTenant = adminTenantConfigs.find(t => t.region === activeTenantRegion) || null;
+    loadingEl.style.display = "none";
+    renderAdminTenants();
+  } catch (err) {
+    loadingEl.textContent = "Erro a carregar tenants: " + err.message;
+  }
+}
+
+function renderAdminTenants() {
+  const el = document.getElementById("admin-tenants");
+  el.innerHTML = "";
+
+  adminTenantConfigs.forEach(tenant => {
+    const regionLabel = tenant.region === "pt" ? "🇵🇹 Portugal" : "🇧🇷 Brasil";
+    const card = document.createElement("div");
+    card.className = "admin-tenant-card";
+    card.innerHTML = `
+      <div class="admin-tenant-header">
+        <strong>${regionLabel}</strong>
+        <span class="admin-company-id">company_id: ${tenant.company_id}</span>
+      </div>
+      <div class="admin-fields">
+        <div class="admin-field">
+          <label>Períodos (dias, separados por vírgula)</label>
+          <input type="text" data-field="periods" value="${tenant.periods.join(",")}" />
+        </div>
+        <div class="admin-field">
+          <label>Tamanhos de pack (g, separados por vírgula)</label>
+          <input type="text" data-field="package_sizes" value="${tenant.package_sizes.join(",")}" />
+        </div>
+        <div class="admin-field-row">
+          <div class="admin-field">
+            <label>Moeda</label>
+            <input type="text" data-field="currency" value="${tenant.currency}" maxlength="3" />
+          </div>
+          <div class="admin-field">
+            <label>Pricelist ID (Odoo)</label>
+            <input type="number" data-field="pricelist_id" value="${tenant.pricelist_id}" min="1" />
+          </div>
+        </div>
+      </div>
+      <div class="admin-tenant-actions">
+        <button class="btn-admin-save" onclick="saveTenant(${tenant.company_id}, this)">Guardar</button>
+        ${activeTenant?.company_id === tenant.company_id ? '<span class="admin-active-badge">✓ Activo</span>' : ""}
+      </div>
+    `;
+    el.appendChild(card);
+  });
+}
+
+async function saveTenant(companyId, btn) {
+  const card = btn.closest(".admin-tenant-card");
+  const get  = field => card.querySelector(`[data-field="${field}"]`).value.trim();
+
+  const body = {
+    periods:       get("periods").split(",").map(v => parseInt(v.trim())).filter(Boolean),
+    package_sizes: get("package_sizes").split(",").map(v => parseInt(v.trim())).filter(Boolean),
+    currency:      get("currency").toUpperCase(),
+    pricelist_id:  parseInt(get("pricelist_id")),
+  };
+
+  // Deriva fortnight/monthly automaticamente dos períodos (ordenados, excluindo 7)
+  const nonWeekly = body.periods.filter(p => p > 7).sort((a, b) => a - b);
+  body.fortnight_days = nonWeekly[0] ?? 15;
+  body.monthly_days   = nonWeekly[nonWeekly.length - 1] ?? 30;
+
+  if (body.periods.some(isNaN) || body.package_sizes.some(isNaN) || isNaN(body.pricelist_id)) {
+    showAdminFeedback("Valores inválidos — verifica os campos.", "err");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "A guardar...";
+
+  try {
+    const res = await fetch(`${REFACTOR_BASE}/admin/tenants/${companyId}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": "Bearer " + ADMIN_TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "HTTP " + res.status);
+    }
+    const updated = await res.json();
+    // Actualiza lista local
+    const idx = adminTenantConfigs.findIndex(t => t.company_id === companyId);
+    if (idx >= 0) adminTenantConfigs[idx] = updated;
+    // Se for o tenant activo, actualiza também
+    if (activeTenant?.company_id === companyId) activeTenant = updated;
+    showAdminFeedback(`Tenant ${updated.region.toUpperCase()} guardado com sucesso.`, "ok");
+  } catch (err) {
+    showAdminFeedback("Erro ao guardar: " + err.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Guardar";
+  }
+}
+
+
+function showAdminFeedback(msg, type) {
+  const el = document.getElementById("admin-feedback");
+  el.textContent = msg;
+  el.className = "admin-feedback " + (type || "");
+  el.style.display = "block";
+  setTimeout(() => { el.style.display = "none"; }, 4000);
+}
+
+// activeTenantRegion já restaurado do localStorage no topo do ficheiro.
+// activeTenant é definido por loadAdminTenants() quando o painel admin abre.
