@@ -542,21 +542,22 @@ document.getElementById("stripe-submit-btn").addEventListener("click", async () 
 document.getElementById("btn-pay").addEventListener("click", async () => {
   showLoading("A criar encomenda...");
   try {
+    const _email = state.petData.partner_email?.trim() || null;
+    const _name  = state.petData.partner_name?.trim()  || null;
+    const _pet   = state.petData.pet_name?.trim()      || null;
     const payload = {
       calc_id:         state.calcId,
       products_id:     [...state.selectedIds],
       mix_percentages: [state.mixPercentage],
       period:          state.period === "monthly" ? (activeTenant?.monthly_days ?? 30) : (activeTenant?.fortnight_days ?? 15),
-      partner_email:   state.petData.partner_email,
-      partner_name:    state.petData.partner_name,
       partner_phone:   state.petData.partner_phone,
-      tutor_email:     state.petData.partner_email,
-      tutor_name:      state.petData.partner_name,
       tutor_phone:     state.petData.partner_phone,
-      pet_name:        state.petData.pet_name,
       order_type:      "trial",
       delivery_number: 1,
     };
+    if (_email) { payload.partner_email = _email; payload.tutor_email = _email; }
+    if (_name)  { payload.partner_name  = _name;  payload.tutor_name  = _name;  }
+    if (_pet)   payload.pet_name = _pet;
     if (state.petData.cep)  payload.cep        = state.petData.cep;
     if (state.petData.cpf && fieldMode("tax_id") !== "hidden") payload.cpf = state.petData.cpf;
     if (state.couponCode)   payload.coupon_code = state.couponCode;
