@@ -200,24 +200,33 @@ state.selectedIds = new Set(result.plans["300"].map(p => p.id))
 
 Os dados estão em `plans["300"][i]`. Cada produto tem `variants[]` com dados por período:
 
-| Campo na variant | Período |
+| Campo na variant | Descrição |
 |---|---|
-| `fortnight_packs` · `fortnight_price` | **15 dias** (quinzenal) |
-| `monthly_packs` · `monthly_price` | **30 dias** (mensal) |
-| `daily_grams` · `daily_measures` | diário (igual para ambos) |
+| `fortnight_packs` · `fortnight_price` | Packs e preço deste produto para **15 dias** |
+| `fortnight_days_amount` | Dias cobertos por este produto no período de 15 dias |
+| `monthly_packs` · `monthly_price` | Packs e preço deste produto para **30 dias** |
+| `monthly_days_amount` | Dias cobertos por este produto no período de 30 dias |
+| `daily_grams` · `daily_measures` | Grama e medidas diárias |
+| `variant_price` | Preço por pack (ex: 6.5 EUR) — **usar este, não `price` que é sempre 0** |
 
-Para **15 dias**, usa `distribution_summary.diets` — tem os valores mais precisos:
+> **Atenção:** Com **N produtos seleccionados**, `fortnight_packs` de cada produto representa a sua **quota proporcional** dos 15 dias — não o total. O total de packs está em `distribution_summary.totals.packs`. Com **1 produto** sozinho, `fortnight_packs` já é o total do período completo.
+
+Para **15 dias**, usa `distribution_summary.diets` — tem os valores mais precisos por produto:
 
 ```js
 // Para quinzenal (15 dias):
 const dist = result.distribution_summary.diets.find(d => d.product_id === productId)
-const packs    = dist?.packs
-const subtotal = dist?.subtotal_discounted
+const packs    = dist?.packs               // packs deste produto
+const subtotal = dist?.subtotal_discounted // preço deste produto
+
+// Total do pedido (todos os produtos):
+const totalPacks = result.distribution_summary.totals.packs
+const totalPrice = result.distribution_summary.totals.discounted
 
 // Para mensal (30 dias):
 const variant = product.variants.find(v => v.percentage === mixPercentage)
 const packs    = variant?.monthly_packs
-const subtotal = variant?.monthly_price_discount
+const subtotal = variant?.monthly_price_discount ?? variant?.monthly_price
 ```
 
 ### Mix feeding
@@ -250,20 +259,71 @@ Usado quando o utilizador altera as dietas seleccionadas ou o mix feeding.
 
 > ⚠️ O campo chama-se **`products_id`** (com `s` antes de `_id`), não `product_ids`.
 
-### Resposta — atenção ao wrapper
+### Resposta — estrutura real
 
 ```json
 {
-  "calc_id": 116,
+  "calc_id": 656,
+  "status":  "pending",
+  "request": { "birth_date": "...", "size": "mini", "..." : "..." },
+  "summary": { "final_total": { "15": 84.5 }, "..." : "..." },
   "result": {
-    "calories": 225.0,
-    "plans": { "300": [...] },
-    "distribution_summary": { "..." : "..." }
+    "calc_id":          656,
+    "previous_calc_id": 655,
+    "calories": 258.2,
+    "plans": {
+      "300": [
+        {
+          "id": 13670,
+          "title": "Turkey",
+          "variant_price": 6.5,
+          "variants": [
+            {
+              "percentage": 100,
+              "daily_grams": 250.0,
+              "daily_measures": 5.0,
+              "fortnight_days_amount": 15,
+              "fortnight_packs": 13,
+              "fortnight_price": 84.5,
+              "fortnight_price_discount": 84.5,
+              "monthly_days_amount": 30,
+              "monthly_packs": 25,
+              "monthly_price": 162.5,
+              "monthly_price_discount": 162.5
+            }
+          ]
+        }
+      ]
+    },
+    "distribution_summary": {
+      "period_days": 15,
+      "diets": [
+        {
+          "product_id": 13670,
+          "title": "Turkey",
+          "grams_per_day": 250.0,
+          "estimated_days": 15.0,
+          "packs": 13.0,
+          "subtotal_discounted": 84.5
+        }
+      ],
+      "totals": { "gross": 84.5, "discounted": 84.5, "packs": 13.0, "estimated_days": 15.0 }
+    }
   }
 }
 ```
 
-Os dados estão em `raw.result`, não na raiz. O `calc_id` foi actualizado:
+**Notas críticas:**
+
+- Os dados do plano estão em **`raw.result`**, não na raiz. O `calc_id` novo está na raiz E em `result.calc_id`.
+- `result.previous_calc_id` → ID do cálculo de origem (útil para rastreabilidade).
+- **`variant_price`** (6.5 EUR/pack) é o preço por pack. O campo `price` é sempre `0.0` — **nunca usar `price`**.
+- **`fortnight_packs` é a quota do produto no período**, não o total do pedido. Com N produtos seleccionados, cada um cobre uma fracção dos 15 dias:
+  - Turkey + Chicken: Turkey=7 packs (8 dias), Chicken=7 packs (7 dias) → total 14 packs
+  - Turkey sozinho: Turkey=13 packs (15 dias) → total 13 packs
+  - Para o total use sempre `distribution_summary.totals.packs`.
+- **`fortnight_days_amount`** e **`monthly_days_amount`** indicam quantos dias do período aquele produto cobre. Com produto único = período completo (15 ou 30). Com vários produtos = quota proporcional.
+- O campo `order["300"]` contém dados agregados do pedido (útil para resumo). Para preços por produto use `plans["300"]`.
 
 ```js
 const raw       = await api("POST", "/api/v1/calc/recalculate", payload)

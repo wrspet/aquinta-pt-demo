@@ -11,13 +11,48 @@ const TENANT_TOKENS = {
   br: "vfOAKN-kcHWKSO8N4b884gSZLvAWtJIScSaS9VAfKSk",
 };
 
-// Tenant activo — definido pelo selector PT/BR no admin
 let activeTenantRegion = localStorage.getItem("admin_tenant") || "pt";
-let activeTenant = null;       // TenantConfig carregado do servidor
-let adminTenantConfigs = [];   // lista completa
+let activeTenant = null;
+let adminTenantConfigs = [];
 
 function activeToken() {
   return TENANT_TOKENS[activeTenantRegion] || TENANT_TOKENS.pt;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHECKOUT FIELDS CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+
+function fieldMode(name) {
+  const cf = activeTenant?.checkout_fields || {};
+  return cf[name] || "required";
+}
+
+function _applyCheckoutFieldConfig() {
+  const idMap = {
+    tax_id:      "nif",
+    phone:       "partner_phone",
+    pet_name:    "pet_name",
+    tutor_name:  "partner_name",
+    tutor_email: "partner_email",
+  };
+  Object.entries(idMap).forEach(([fieldName, elId]) => {
+    const mode = fieldMode(fieldName);
+    const el   = document.getElementById(elId);
+    if (!el) return;
+    const wrap = el.closest(".field");
+    if (mode === "hidden") {
+      if (wrap) wrap.style.display = "none";
+      el.removeAttribute("required");
+    } else {
+      if (wrap) wrap.style.display = "";
+      if (mode === "required") {
+        el.setAttribute("required", "");
+      } else {
+        el.removeAttribute("required");
+      }
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,12 +62,12 @@ const state = {
   petData:       {},
   calcResult:    null,
   calcId:        null,
-  period:        "fortnight",   // "fortnight" | "monthly"
+  period:        "fortnight",
   freight:       null,
   editing:       false,
   selectedIds:   new Set(),
   mixPercentage: 100,
-  couponCode:    null,          // código de cupão aplicado
+  couponCode:    null,
 };
 
 // Mapa de paths: ops-gateway → refactor (quando API_BASE = REFACTOR_BASE)
@@ -115,7 +150,7 @@ document.getElementById("form-pet").addEventListener("submit", async e => {
     phone:       document.getElementById("partner_phone").value.trim(),
   };
   const nif = document.getElementById("nif").value.trim();
-  if (nif) pet.nif = nif;
+  if (nif && fieldMode("tax_id") !== "hidden") pet.cpf = nif;
   const cep = document.getElementById("cep").value.trim();
   if (cep) pet.cep = cep;
 
@@ -132,6 +167,7 @@ document.getElementById("form-pet").addEventListener("submit", async e => {
     const result = await api("POST", "/api/v1/calc", pet);
     state.calcResult = result;
     state.calcId = result.calc_id;
+    state.period = "fortnight";
     state.editing = false;
     state.mixPercentage = 100;
     state.selectedIds = new Set((result.plans?.["300"] || []).map(p => p.id));
@@ -147,8 +183,6 @@ document.getElementById("form-pet").addEventListener("submit", async e => {
 // STEP 2 — RENDER RESULTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Retorna os dados de uma dieta para o período seleccionado
-// Usa distribution_summary (15d default) ou variants para mensal
 function getDietData(productId) {
   const result = state.calcResult;
   const plans300 = result?.plans?.["300"] || [];
@@ -158,7 +192,6 @@ function getDietData(productId) {
   const variant  = (product.variants || []).find(v => v.percentage === state.mixPercentage)
                 || product.variants?.[0];
 
-  // distribution_summary.diets tem os dados mais completos (para 15d/período actual do calc)
   const distDiets = result?.distribution_summary?.diets || [];
   const distDiet  = distDiets.find(d => d.product_id === productId);
 
@@ -178,7 +211,6 @@ function getDietData(productId) {
     };
   }
 
-  // fortnight — usa distribution_summary se disponível (mais preciso)
   return {
     title:          product.title || product.name,
     daily_grams:    distDiet?.grams_per_day    ?? variant?.daily_grams,
@@ -249,7 +281,6 @@ function renderResults() {
     grid.appendChild(card);
   });
 
-  // resumo total
   const totalPacks = state.period === "monthly"
     ? plans300.filter(p => state.selectedIds.has(p.id)).reduce((s, p) => {
         const v = (p.variants || []).find(vv => vv.percentage === state.mixPercentage) || p.variants?.[0];
@@ -258,7 +289,6 @@ function renderResults() {
     : (totals.packs ?? summary.packs ?? 0);
 
   document.getElementById("total-packs").textContent = totalPacks ? Math.ceil(totalPacks) + " packs no total" : "";
-
   document.getElementById("edit-controls").style.display     = state.editing ? "block" : "none";
   document.getElementById("btn-edit").style.display          = state.editing ? "none" : "inline-block";
   document.getElementById("btn-confirm-edit").style.display  = state.editing ? "inline-block" : "none";
@@ -277,7 +307,6 @@ function toggleDiet(productId) {
   renderResults();
 }
 
-// TABS
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
@@ -287,7 +316,6 @@ document.querySelectorAll(".tab").forEach(tab => {
   });
 });
 
-// Editar
 document.getElementById("btn-edit").addEventListener("click", () => {
   state.editing = true;
   renderResults();
@@ -311,7 +339,6 @@ document.getElementById("btn-confirm-edit").addEventListener("click", async () =
       products_id:     [...state.selectedIds],
       mix_percentages: [state.mixPercentage],
     });
-    // recalculate envolve resposta em { request, result, calc_id, ... }
     const result = raw.result || raw;
     const newCalcId = raw.calc_id || result.calc_id;
     if (newCalcId) state.calcId = newCalcId;
@@ -388,7 +415,6 @@ document.getElementById("btn-apply-coupon").addEventListener("click", async () =
   fb.textContent = "A verificar cupão...";
 
   try {
-    // Faz um recálculo rápido só para validar o cupão e ver o desconto
     const raw = await api("POST", "/api/v1/calc/recalculate", {
       calc_id:         state.calcId,
       products_id:     [...state.selectedIds],
@@ -406,7 +432,7 @@ document.getElementById("btn-apply-coupon").addEventListener("click", async () =
   } catch (err) {
     state.couponCode = null;
     fb.className = "coupon-feedback err";
-    fb.textContent = `Cupão inválido ou expirado.`;
+    fb.textContent = "Cupão inválido ou expirado.";
   }
 });
 
@@ -463,13 +489,13 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
       order_type:      "trial",
       delivery_number: 1,
     };
-    if (state.petData.cep)  payload.cep         = state.petData.cep;
-    if (state.couponCode)   payload.coupon_code  = state.couponCode;
+    if (state.petData.cep)  payload.cep        = state.petData.cep;
+    if (state.petData.cpf && fieldMode("tax_id") !== "hidden") payload.cpf = state.petData.cpf;
+    if (state.couponCode)   payload.coupon_code = state.couponCode;
 
-    const raw   = await api("POST", "/api/v1/orders", payload);
-    // gateway retorna { order: { payment_link, link_stripe, ... }, calc: {...} }
-    const o     = raw.order || raw;
-    const link  = o.payment_link || o.link_stripe;
+    const raw  = await api("POST", "/api/v1/orders", payload);
+    const o    = raw.order || raw;
+    const link = o.payment_link || o.link_stripe;
     if (link) {
       window.location.href = link;
     } else {
@@ -481,8 +507,9 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADMIN PANEL
+// ADMIN PANEL — TOGGLE + TABS
 // ─────────────────────────────────────────────────────────────────────────────
+let _activeAdminTab = localStorage.getItem("admin_tab") || "simular";
 
 function toggleAdmin() {
   const panel = document.getElementById("admin-panel");
@@ -491,33 +518,56 @@ function toggleAdmin() {
   if (open) initAdmin();
 }
 
+function switchAdminTab(tab) {
+  _activeAdminTab = tab;
+  localStorage.setItem("admin_tab", tab);
+
+  document.querySelectorAll(".admin-tab").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".admin-tab-pane").forEach(p =>
+    p.classList.toggle("active", p.id === "tab-" + tab));
+
+  if (tab === "admin" && adminTenantConfigs.length === 0) loadAdminTenants();
+  if (tab === "catalog") loadCatalog();
+}
+
+function goToSimulator() {
+  toggleAdmin();
+  showStep("step-pet");
+}
+
 function initAdmin() {
-  // Selector de tenant (PT/BR) — define o token activo
+  // Tenant radio buttons
   document.querySelectorAll('input[name="tenant"]').forEach(r => {
     r.checked = r.value === activeTenantRegion;
     r.addEventListener("change", () => {
       activeTenantRegion = r.value;
       localStorage.setItem("admin_tenant", r.value);
-      // Actualiza activeTenant com o config correspondente
       activeTenant = adminTenantConfigs.find(t => t.region === activeTenantRegion) || null;
+      _applyCheckoutFieldConfig();
       renderAdminTenants();
-      showAdminFeedback(`Tenant ${r.value.toUpperCase()} activo — token: ${activeToken()}`, "ok");
+      showAdminFeedback(`Tenant ${r.value.toUpperCase()} activo`, "ok");
     });
   });
 
-  // Sync server radio buttons
+  // Server radio buttons
   const savedServer = localStorage.getItem("admin_server") || "https://stg.meajudamaia.com";
   document.querySelectorAll('input[name="server"]').forEach(r => {
     r.checked = r.value === savedServer;
     r.addEventListener("change", () => {
       API_BASE = r.value;
       localStorage.setItem("admin_server", r.value);
-      showAdminFeedback(`Servidor activo: ${r.value}`, "ok");
+      showAdminFeedback(`Servidor: ${r.value}`, "ok");
     });
   });
 
-  loadAdminTenants();
+  // Restore last active tab
+  switchAdminTab(_activeAdminTab);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN PANEL — TENANT MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function loadAdminTenants() {
   const loadingEl = document.getElementById("admin-tenants-loading");
@@ -532,6 +582,7 @@ async function loadAdminTenants() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     adminTenantConfigs = await res.json();
     activeTenant = adminTenantConfigs.find(t => t.region === activeTenantRegion) || null;
+    _applyCheckoutFieldConfig();
     loadingEl.style.display = "none";
     renderAdminTenants();
   } catch (err) {
@@ -539,27 +590,58 @@ async function loadAdminTenants() {
   }
 }
 
+const CF_FIELDS = [
+  { key: "tax_id",      label: "NIF / CPF" },
+  { key: "phone",       label: "Telefone" },
+  { key: "pet_name",    label: "Nome do pet" },
+  { key: "tutor_name",  label: "Nome do tutor" },
+  { key: "tutor_email", label: "Email do tutor" },
+];
+
 function renderAdminTenants() {
   const el = document.getElementById("admin-tenants");
   el.innerHTML = "";
 
   adminTenantConfigs.forEach(tenant => {
     const regionLabel = tenant.region === "pt" ? "🇵🇹 Portugal" : "🇧🇷 Brasil";
+    const isActive = activeTenant?.company_id === tenant.company_id;
+    const cf = tenant.checkout_fields || {};
+    const gw = tenant.payment_gw || "malga";
+
+    const cfRows = CF_FIELDS.map(f => {
+      const cur = cf[f.key] || "required";
+      const opts = ["required", "optional", "hidden"].map(v =>
+        `<option value="${v}"${cur === v ? " selected" : ""}>${v}</option>`
+      ).join("");
+      return `<div class="cf-row">
+        <span class="cf-label">${f.label}</span>
+        <select class="cf-select" data-cf-field="${f.key}">${opts}</select>
+      </div>`;
+    }).join("");
+
     const card = document.createElement("div");
-    card.className = "admin-tenant-card";
+    card.className = "admin-tenant-card" + (isActive ? " is-active" : "");
+    card.id = `tenant-card-${tenant.company_id}`;
     card.innerHTML = `
       <div class="admin-tenant-header">
         <strong>${regionLabel}</strong>
-        <span class="admin-company-id">company_id: ${tenant.company_id}</span>
-      </div>
-      <div class="admin-fields">
-        <div class="admin-field">
-          <label>Períodos (dias, separados por vírgula)</label>
-          <input type="text" data-field="periods" value="${tenant.periods.join(",")}" />
+        <div style="display:flex;align-items:center;gap:6px">
+          ${isActive ? '<span class="admin-active-badge">✓ Activo</span>' : ""}
+          <span class="admin-company-id">id ${tenant.company_id}</span>
         </div>
-        <div class="admin-field">
-          <label>Tamanhos de pack (g, separados por vírgula)</label>
-          <input type="text" data-field="package_sizes" value="${tenant.package_sizes.join(",")}" />
+      </div>
+
+      <div class="tenant-section-title">Plano</div>
+      <div class="admin-fields">
+        <div class="admin-field-row">
+          <div class="admin-field">
+            <label>Períodos (dias)</label>
+            <input type="text" data-field="periods" value="${tenant.periods.join(",")}" placeholder="14,28" />
+          </div>
+          <div class="admin-field">
+            <label>Tamanhos pack (g)</label>
+            <input type="text" data-field="package_sizes" value="${tenant.package_sizes.join(",")}" placeholder="300,500" />
+          </div>
         </div>
         <div class="admin-field-row">
           <div class="admin-field">
@@ -572,9 +654,31 @@ function renderAdminTenants() {
           </div>
         </div>
       </div>
+
+      <div class="tenant-section-title">Pagamento</div>
+      <div class="admin-fields">
+        <div class="admin-field">
+          <label>Gateway</label>
+          <select data-field="payment_gw">
+            <option value="malga"${gw === "malga" ? " selected" : ""}>Malga</option>
+            <option value="stripe"${gw === "stripe" ? " selected" : ""}>Stripe</option>
+          </select>
+        </div>
+        <div class="admin-field">
+          <label>Stripe — URL sucesso</label>
+          <input type="text" data-field="stripe_success_url" value="${tenant.stripe_success_url || ""}" placeholder="https://..." />
+        </div>
+        <div class="admin-field">
+          <label>Stripe — URL cancelamento</label>
+          <input type="text" data-field="stripe_cancel_url" value="${tenant.stripe_cancel_url || ""}" placeholder="https://..." />
+        </div>
+      </div>
+
+      <div class="tenant-section-title">Campos de checkout</div>
+      <div class="cf-table">${cfRows}</div>
+
       <div class="admin-tenant-actions">
         <button class="btn-admin-save" onclick="saveTenant(${tenant.company_id}, this)">Guardar</button>
-        ${activeTenant?.company_id === tenant.company_id ? '<span class="admin-active-badge">✓ Activo</span>' : ""}
       </div>
     `;
     el.appendChild(card);
@@ -583,22 +687,29 @@ function renderAdminTenants() {
 
 async function saveTenant(companyId, btn) {
   const card = btn.closest(".admin-tenant-card");
-  const get  = field => card.querySelector(`[data-field="${field}"]`).value.trim();
-
-  const body = {
-    periods:       get("periods").split(",").map(v => parseInt(v.trim())).filter(Boolean),
-    package_sizes: get("package_sizes").split(",").map(v => parseInt(v.trim())).filter(Boolean),
-    currency:      get("currency").toUpperCase(),
-    pricelist_id:  parseInt(get("pricelist_id")),
+  const get  = field => {
+    const el = card.querySelector(`[data-field="${field}"]`);
+    return el ? el.value.trim() : "";
   };
 
-  // Deriva fortnight/monthly automaticamente dos períodos (ordenados, excluindo 7)
-  const nonWeekly = body.periods.filter(p => p > 7).sort((a, b) => a - b);
-  body.fortnight_days = nonWeekly[0] ?? 15;
-  body.monthly_days   = nonWeekly[nonWeekly.length - 1] ?? 30;
+  const periods      = get("periods").split(",").map(v => parseInt(v.trim())).filter(Boolean);
+  const packageSizes = get("package_sizes").split(",").map(v => parseInt(v.trim())).filter(Boolean);
+  const currency     = get("currency").toUpperCase();
+  const pricelistId  = parseInt(get("pricelist_id"));
+  const paymentGw    = get("payment_gw") || "malga";
+  const stripeOk     = get("stripe_success_url");
+  const stripeCancel = get("stripe_cancel_url");
 
-  if (body.periods.some(isNaN) || body.package_sizes.some(isNaN) || isNaN(body.pricelist_id)) {
-    showAdminFeedback("Valores inválidos — verifica os campos.", "err");
+  const nonWeekly = periods.filter(p => p > 7).sort((a, b) => a - b);
+
+  // Checkout fields — ler directamente dos selects no card
+  const checkoutFields = {};
+  card.querySelectorAll(".cf-select").forEach(s => {
+    checkoutFields[s.dataset.cfField] = s.value;
+  });
+
+  if (periods.some(isNaN) || packageSizes.some(isNaN) || isNaN(pricelistId)) {
+    showAdminFeedback("Valores inválidos — verifica os campos numéricos.", "err");
     return;
   }
 
@@ -612,19 +723,31 @@ async function saveTenant(companyId, btn) {
         "Authorization": "Bearer " + ADMIN_TOKEN,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        periods,
+        package_sizes:      packageSizes,
+        currency,
+        pricelist_id:       pricelistId,
+        fortnight_days:     nonWeekly[0] ?? periods[0],
+        monthly_days:       nonWeekly[nonWeekly.length - 1] ?? periods[periods.length - 1],
+        payment_gw:         paymentGw,
+        stripe_success_url: stripeOk   || null,
+        stripe_cancel_url:  stripeCancel || null,
+        checkout_fields:    checkoutFields,
+      }),
     });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || "HTTP " + res.status);
     }
     const updated = await res.json();
-    // Actualiza lista local
     const idx = adminTenantConfigs.findIndex(t => t.company_id === companyId);
     if (idx >= 0) adminTenantConfigs[idx] = updated;
-    // Se for o tenant activo, actualiza também
-    if (activeTenant?.company_id === companyId) activeTenant = updated;
-    showAdminFeedback(`Tenant ${updated.region.toUpperCase()} guardado com sucesso.`, "ok");
+    if (activeTenant?.company_id === companyId) {
+      activeTenant = updated;
+      _applyCheckoutFieldConfig();
+    }
+    showAdminFeedback(`Tenant ${updated.region.toUpperCase()} guardado e sincronizado.`, "ok");
   } catch (err) {
     showAdminFeedback("Erro ao guardar: " + err.message, "err");
   } finally {
@@ -633,6 +756,65 @@ async function saveTenant(companyId, btn) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CATALOG TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadCatalog() {
+  const q       = (document.getElementById("catalog-q")?.value || "").trim();
+  const loading = document.getElementById("catalog-loading");
+  const results = document.getElementById("catalog-results");
+
+  loading.style.display = "block";
+  results.innerHTML = "";
+
+  try {
+    const url = REFACTOR_BASE + "/web/products?limit=100" + (q ? "&q=" + encodeURIComponent(q) : "");
+    const res = await fetch(url, {
+      headers: { "Authorization": "Bearer " + activeToken() }
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    loading.style.display = "none";
+    renderCatalog(data.products || []);
+  } catch (err) {
+    loading.style.display = "none";
+    results.innerHTML = `<p class="catalog-error">Erro: ${err.message}</p>`;
+  }
+}
+
+function renderCatalog(products) {
+  const el = document.getElementById("catalog-results");
+  if (!products.length) {
+    el.innerHTML = '<p class="catalog-empty">Nenhum produto encontrado.</p>';
+    return;
+  }
+
+  const rows = products.map(p => `
+    <tr>
+      <td class="cat-sku">${p.sku || "—"}</td>
+      <td class="cat-name">${p.name || p.title || "—"}</td>
+      <td class="cat-kcal">${p.energy_kcal ? p.energy_kcal + " kcal/kg" : "—"}</td>
+      <td class="cat-price">${p.price != null ? p.price.toFixed(2) + " €" : "—"}</td>
+    </tr>
+  `).join("");
+
+  el.innerHTML = `
+    <div class="catalog-count">${products.length} produto${products.length !== 1 ? "s" : ""}</div>
+    <table class="catalog-table">
+      <thead>
+        <tr>
+          <th>SKU</th><th>Nome</th><th>Energia</th><th>Preço/pack</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEEDBACK
+// ─────────────────────────────────────────────────────────────────────────────
 
 function showAdminFeedback(msg, type) {
   const el = document.getElementById("admin-feedback");

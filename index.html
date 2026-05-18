@@ -80,8 +80,8 @@
             <input type="tel" id="partner_phone" placeholder="+351912345678" required />
           </div>
           <div class="field">
-            <label>NIF <span style="font-weight:400;text-transform:none">(Número de Identificação Fiscal)</span></label>
-            <input type="text" id="nif" placeholder="Ex: 123456789" maxlength="9" required />
+            <label>NIF / CPF <span style="font-weight:400;text-transform:none">(Documento fiscal)</span></label>
+            <input type="text" id="nif" placeholder="Ex: 123456789" maxlength="14" minlength="9" pattern="[0-9]{9,14}" title="Mínimo 9 dígitos" />
           </div>
         </div>
         <div class="row">
@@ -110,7 +110,6 @@
 
       <div id="plans-grid" class="plans-grid"></div>
 
-      <!-- Controlos de edição (só visíveis em modo edição) -->
       <div id="edit-controls" style="display:none">
         <div class="edit-hint">Clica nas dietas para seleccionar ou remover. Podes também ajustar o mix feeding.</div>
         <div class="mix-section">
@@ -126,7 +125,6 @@
 
       <div id="freight-info" class="freight-info" style="display:none"></div>
 
-      <!-- Barra inferior -->
       <div class="bottom-bar">
         <div class="total-line">
           <span class="total-amount" id="total-label"></span>
@@ -154,8 +152,8 @@
         <button type="button" id="btn-apply-coupon" class="btn-secondary">Aplicar</button>
       </div>
       <div id="coupon-feedback" class="coupon-feedback" style="display:none"></div>
-      <button class="btn-primary" id="btn-pay">Pagar com Stripe →</button>
-      <p class="hint">Serás redireccionado para o checkout seguro da Stripe.</p>
+      <button class="btn-primary" id="btn-pay">Pagar →</button>
+      <p class="hint">Serás redireccionado para o checkout seguro.</p>
     </div>
   </div>
 
@@ -177,50 +175,89 @@
     </div>
   </div>
 
-  <!-- Botão flutuante Admin -->
-  <button id="admin-toggle" title="Admin" onclick="toggleAdmin()">⚙</button>
+  <!-- Botão flutuante -->
+  <button id="admin-toggle" title="Menu" onclick="toggleAdmin()">⚙</button>
 
-  <!-- PAINEL ADMIN -->
+  <!-- PAINEL LATERAL -->
   <div id="admin-panel" class="admin-panel" style="display:none">
+
+    <!-- Header com tabs -->
     <div class="admin-header">
-      <h2>⚙ Admin — Tenant Config</h2>
+      <nav class="admin-tabs">
+        <button class="admin-tab active" data-tab="simular" onclick="switchAdminTab('simular')">Simular</button>
+        <button class="admin-tab" data-tab="admin" onclick="switchAdminTab('admin')">Admin</button>
+        <button class="admin-tab" data-tab="catalog" onclick="switchAdminTab('catalog')">Catálogo</button>
+      </nav>
       <button class="admin-close" onclick="toggleAdmin()">✕</button>
     </div>
 
-    <div class="admin-section">
-      <h3>Tenant activo</h3>
-      <p class="admin-hint">O token identifica o tenant. Selecciona antes de calcular.</p>
-      <div class="server-toggle">
-        <label class="radio-opt">
-          <input type="radio" name="tenant" value="pt" id="tenant-pt" />
-          <span>🇵🇹 Portugal</span>
-        </label>
-        <label class="radio-opt">
-          <input type="radio" name="tenant" value="br" id="tenant-br" />
-          <span>🇧🇷 Brasil</span>
-        </label>
+    <!-- ── Tab: Simular ── -->
+    <div id="tab-simular" class="admin-tab-pane active">
+
+      <div class="sim-hero">
+        <div class="sim-hero-icon">🐾</div>
+        <h3>Simulador</h3>
+        <p>Calcula o plano nutricional para um pet e simula o processo de encomenda.</p>
+        <button class="btn-go-sim" onclick="goToSimulator()">Iniciar simulação →</button>
       </div>
+
+      <div class="admin-section">
+        <h3>Tenant activo</h3>
+        <p class="admin-hint">O token identifica o tenant. Selecciona antes de calcular.</p>
+        <div class="server-toggle">
+          <label class="radio-opt">
+            <input type="radio" name="tenant" value="pt" id="tenant-pt" />
+            <span>🇵🇹 Portugal <span class="badge-gw stripe">Stripe</span></span>
+          </label>
+          <label class="radio-opt">
+            <input type="radio" name="tenant" value="br" id="tenant-br" />
+            <span>🇧🇷 Brasil <span class="badge-gw malga">Malga</span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <h3>Servidor</h3>
+        <div class="server-toggle">
+          <label class="radio-opt">
+            <input type="radio" name="server" value="https://stg.meajudamaia.com" id="srv-stable" />
+            <span>Stable <code>stg.meajudamaia.com</code></span>
+          </label>
+          <label class="radio-opt">
+            <input type="radio" name="server" value="https://stg.meajudamaia.com/v2" id="srv-refactor" />
+            <span>Refactor <code>stg.meajudamaia.com/v2</code></span>
+          </label>
+        </div>
+      </div>
+
     </div>
 
-    <div class="admin-section">
-      <h3>Servidor</h3>
-      <div class="server-toggle">
-        <label class="radio-opt">
-          <input type="radio" name="server" value="https://stg.meajudamaia.com" id="srv-stable" />
-          <span>Stable <code>stg.meajudamaia.com</code></span>
-        </label>
-        <label class="radio-opt">
-          <input type="radio" name="server" value="https://stg.meajudamaia.com/v2" id="srv-refactor" />
-          <span>Refactor <code>stg.meajudamaia.com/v2</code></span>
-        </label>
+    <!-- ── Tab: Admin ── -->
+    <div id="tab-admin" class="admin-tab-pane">
+
+      <div class="admin-section">
+        <h3>Configuração de Tenants</h3>
+        <p class="admin-hint">Alterações são aplicadas em tempo real e sincronizadas com o registry.</p>
+        <div id="admin-tenants-loading" class="admin-spinner">A carregar...</div>
+        <div id="admin-tenants"></div>
       </div>
+
     </div>
 
-    <div class="admin-section">
-      <h3>Configuração de Tenants</h3>
-      <p class="admin-hint">Alterações aplicam-se em tempo real ao servidor de refactor. Persistem entre restarts.</p>
-      <div id="admin-tenants-loading" class="admin-spinner">A carregar...</div>
-      <div id="admin-tenants"></div>
+    <!-- ── Tab: Catálogo ── -->
+    <div id="tab-catalog" class="admin-tab-pane">
+
+      <div class="admin-section">
+        <h3>Catálogo de Produtos</h3>
+        <p class="admin-hint">Produtos disponíveis no tenant activo (Odoo).</p>
+        <div class="catalog-search-row">
+          <input type="text" id="catalog-q" placeholder="Pesquisar por nome..." onkeydown="if(event.key==='Enter') loadCatalog()" />
+          <button class="btn-admin-action" onclick="loadCatalog()">Pesquisar</button>
+        </div>
+        <div id="catalog-loading" style="display:none" class="admin-spinner">A carregar produtos...</div>
+        <div id="catalog-results"></div>
+      </div>
+
     </div>
 
     <div id="admin-feedback" class="admin-feedback" style="display:none"></div>
