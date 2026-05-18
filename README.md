@@ -19,6 +19,8 @@ Guia passo a passo para integrar o fluxo completo da API Aquinta Portugal:
 10. [Estado mínimo da aplicação](#10-estado-mínimo-da-aplicação)
 11. [Exemplos de backend completo](#11-exemplos-de-backend-completo)
 12. [Erros comuns e como resolver](#12-erros-comuns-e-como-resolver)
+13. [Configuração de campos de checkout por tenant](#13-configuração-de-campos-de-checkout-por-tenant-checkout_fields)
+14. [Endpoints adicionais](#14-endpoints-adicionais)
 
 ---
 
@@ -26,7 +28,6 @@ Guia passo a passo para integrar o fluxo completo da API Aquinta Portugal:
 
 ```
 Base URL:  https://stg.meajudamaia.com
-API Key:   SUA_API_KEY_AQUI
 ```
 
 **Todas as chamadas usam este header:**
@@ -36,13 +37,21 @@ Authorization: Bearer SUA_API_KEY_AQUI
 Content-Type: application/json
 ```
 
-A API key determina automaticamente:
-- Empresa PT (Aquinta Portugal, company_id=9)
-- Moeda EUR
-- Gateway de pagamento: Stripe
-- Pricelist EUR
+### Tipos de token suportados
 
-> **Segurança:** Em produção a API key deve viver no servidor, nunca exposta no frontend.
+| Tipo | Formato | Uso |
+|---|---|---|
+| **App token** (recomendado) | string opaca (ex: `Oja6HPlX...`) | Integração frontend/backend de tenant fixo |
+| **API key** | começa com `sk_` | Acesso multi-tenant via `X-Company-Id` |
+| **JWT** | começa com `eyJ` | Utilizadores do dashboard (login via `/api/v1/auth/login`) |
+
+O token determina automaticamente:
+- Empresa PT (Aquinta Portugal, `company_id=9`) ou BR (`company_id=1`)
+- Moeda (EUR / BRL)
+- Gateway de pagamento (Stripe para PT / Malga para BR)
+- Pricelist correta por tenant
+
+> **Segurança:** Em produção a API key/token deve viver no servidor, nunca exposta no frontend.
 
 ---
 
@@ -67,6 +76,8 @@ A API key determina automaticamente:
         ▼ Stripe webhook → Odoo confirma pedido automaticamente
 [Pago ✓]
 ```
+
+> **Multi-tenant:** O tenant (PT ou BR) é determinado exclusivamente pelo token Bearer. O gateway injeta automaticamente o `company_id` em todos os passos do fluxo — cálculo, recálculo e criação de pedido usam sempre a empresa correta sem qualquer configuração extra.
 
 ---
 
@@ -93,11 +104,11 @@ O formulário recolhe **dois grupos de dados**. É crítico que os dados do tuto
 | `partner_name` | text | nome completo |
 | `partner_email` | email | e-mail do tutor |
 | `partner_phone` | tel | formato `+351912345678` |
-| `nif` | text | NIF português — 9 dígitos (ex: `234567891`) |
+| `cpf` | text | NIF / CPF — mínimo 9 dígitos (ex: `234567891`) |
 | `cep` | text | código postal — formato `XXXX-XXX` (ex: `1000-001`) |
 
 > **Crítico — lê com atenção:**  
-> `tutor_name`, `phone` e `nif` **têm de ir no payload do `/calc`**.  
+> `tutor_name`, `phone` e `cpf` **têm de ir no payload do `/calc`**.  
 > O plan-builder guarda o `request_json` do cálculo e valida esses campos ao criar o pedido.  
 > Se chegarem apenas no `/orders` e não no `/calc`, o pedido falha com `MISSING_REQUIRED_ORDER_FIELDS`.
 
@@ -119,7 +130,7 @@ O formulário recolhe **dois grupos de dados**. É crítico que os dados do tuto
   "tutor_name":    "Ana Ferreira",
   "tutor_email":   "ana@email.pt",
   "phone":         "+351912345678",
-  "nif":           "234567891",
+  "cpf":           "234567891",
   "cep":           "1000-001",
   "package_sizes": [300],
   "periods":       [15],
@@ -128,7 +139,7 @@ O formulário recolhe **dois grupos de dados**. É crítico que os dados do tuto
 ```
 
 **Campos obrigatórios mínimos:** `birth_date`, `weight`, `size`, `fitness`, `activity`, `castrated`  
-**Obrigatórios para criar pedido depois:** `tutor_name`, `phone`, `nif`, `tutor_email`
+**Obrigatórios para criar pedido depois:** `tutor_name`, `phone`, `cpf`, `tutor_email`
 
 ### Resposta
 
@@ -155,12 +166,6 @@ O formulário recolhe **dois grupos de dados**. É crítico que os dados do tuto
             "monthly_price_discount": 84.5
           }
         ]
-      },
-      {
-        "id": 13669,
-        "title": "Chicken",
-        "product_energy": 900.0,
-        "variants": [ { "percentage": 100, "fortnight_packs": 7, "fortnight_price": 45.5, "..." : "..." } ]
       }
     ]
   },
@@ -182,11 +187,9 @@ O formulário recolhe **dois grupos de dados**. É crítico que os dados do tuto
 ### O que guardar no estado
 
 ```js
-state.calcId     = result.calc_id           // usado em todos os passos seguintes
-state.calcResult = result                   // para renderizar os planos
-state.selectedIds = new Set(
-  result.plans["300"].map(p => p.id)        // seleccionar todas as dietas por defeito
-)
+state.calcId     = result.calc_id
+state.calcResult = result
+state.selectedIds = new Set(result.plans["300"].map(p => p.id))
 ```
 
 ---
@@ -195,8 +198,7 @@ state.selectedIds = new Set(
 
 ### Como ler preços e porções
 
-Os dados estão em `plans["300"][i]` (indexado por tamanho de pacote, aqui sempre `"300"`).  
-Cada produto tem `variants[]` com dados por período:
+Os dados estão em `plans["300"][i]`. Cada produto tem `variants[]` com dados por período:
 
 | Campo na variant | Período |
 |---|---|
@@ -209,8 +211,8 @@ Para **15 dias**, usa `distribution_summary.diets` — tem os valores mais preci
 ```js
 // Para quinzenal (15 dias):
 const dist = result.distribution_summary.diets.find(d => d.product_id === productId)
-const packs    = dist?.packs             // número de packs
-const subtotal = dist?.subtotal_discounted  // preço com desconto
+const packs    = dist?.packs
+const subtotal = dist?.subtotal_discounted
 
 // Para mensal (30 dias):
 const variant = product.variants.find(v => v.percentage === mixPercentage)
@@ -228,13 +230,13 @@ const subtotal = variant?.monthly_price_discount
 | `50` | 50% Aquinta + 50% ração do cliente |
 | `25` | 25% Aquinta + 75% ração do cliente |
 
-Afecta gramas diários e número de packs — não é uma mistura entre sabores.
-
 ---
 
 ## 6. Passo 4 — Recalcular (opcional) `POST /api/v1/calc/recalculate`
 
 Usado quando o utilizador altera as dietas seleccionadas ou o mix feeding.
+
+> **Multi-tenant:** O recálculo respeita automaticamente o tenant do token — os produtos e preços carregados são sempre os do tenant PT ou BR, conforme o token Bearer utilizado. O `company_id` é propagado pelo gateway via header interno ao plan-builder.
 
 ### Payload
 
@@ -249,8 +251,6 @@ Usado quando o utilizador altera as dietas seleccionadas ou o mix feeding.
 > ⚠️ O campo chama-se **`products_id`** (com `s` antes de `_id`), não `product_ids`.
 
 ### Resposta — atenção ao wrapper
-
-A resposta tem uma estrutura diferente do `/calc`:
 
 ```json
 {
@@ -267,9 +267,9 @@ Os dados estão em `raw.result`, não na raiz. O `calc_id` foi actualizado:
 
 ```js
 const raw       = await api("POST", "/api/v1/calc/recalculate", payload)
-const result    = raw.result || raw          // dados do plano
+const result    = raw.result || raw
 const newCalcId = raw.calc_id || result.calc_id
-if (newCalcId) state.calcId = newCalcId      // IMPORTANTE: actualizar calc_id
+if (newCalcId) state.calcId = newCalcId   // IMPORTANTE: actualizar calc_id
 state.calcResult = result
 ```
 
@@ -293,7 +293,13 @@ state.calcResult = result
 }
 ```
 
-Somar `freight.value` ao total mostrado ao utilizador.
+### Frete multi-pet `POST /api/v1/calc/cart/freight`
+
+Para cenários com múltiplos pets (usando `cart_id`):
+
+```json
+{ "cep": "1000-001", "cart_id": "cart-abc123" }
+```
 
 ---
 
@@ -304,7 +310,7 @@ Somar `freight.value` ao total mostrado ao utilizador.
 ```json
 {
   "calc_id":         116,
-  "products_id":     [13670],
+  "product_ids":     [13670],
   "mix_percentages": [100],
   "period":          15,
 
@@ -323,12 +329,7 @@ Somar `freight.value` ao total mostrado ao utilizador.
 }
 ```
 
-**Campos obrigatórios:**
-- `calc_id` — ID do cálculo (ou do último recálculo)
-- `partner_email` / `partner_name` / `partner_phone` — identificação do cliente no Odoo
-- `tutor_email` / `tutor_name` / `tutor_phone` — duplicar os dados do parceiro
-- `period` — `15` (quinzenal) ou `30` (mensal)
-- `order_type` — `"trial"` para primeira entrega
+**Campos obrigatórios:** `calc_id`, `partner_email`, `partner_name`, `partner_phone`, `period`, `order_type`
 
 > **Nota:** `partner_*` e `tutor_*` podem ter os mesmos valores — são campos redundantes por compatibilidade.
 
@@ -336,23 +337,14 @@ Somar `freight.value` ao total mostrado ao utilizador.
 
 ```json
 {
+  "payment_link": "https://checkout.stripe.com/c/pay/cs_test_...",
+  "link_stripe":  "https://checkout.stripe.com/c/pay/cs_test_...",
+  "stripe_session_id": "cs_test_...",
   "order": {
     "id":           6535,
     "payment_link": "https://checkout.stripe.com/c/pay/cs_test_...",
-    "link_stripe":  "https://checkout.stripe.com/c/pay/cs_test_...",
     "confirmed":    false,
-    "totals": {
-      "total":      91.0,
-      "discounted": 91.0
-    },
-    "items": [
-      { "product_id": 13670, "title": "Turkey", "packages": 7, "subtotal": 45.5 }
-    ]
-  },
-  "calc": {
-    "id":         116,
-    "cart_id":    "cart-abc123",
-    "pet_name":   "Bolinha"
+    "totals": { "total": 91.0, "discounted": 91.0 }
   }
 }
 ```
@@ -361,8 +353,8 @@ Somar `freight.value` ao total mostrado ao utilizador.
 
 ```js
 const raw  = await api("POST", "/api/v1/orders", payload)
-const o    = raw.order || raw                    // gateway devolve { order: {...}, calc: {...} }
-const link = o.payment_link || o.link_stripe     // link Stripe Checkout
+const o    = raw.order || raw
+const link = o.payment_link || o.link_stripe
 ```
 
 ---
@@ -371,13 +363,11 @@ const link = o.payment_link || o.link_stripe     // link Stripe Checkout
 
 ```js
 if (link) {
-  window.location.href = link   // redireciona para checkout.stripe.com
+  window.location.href = link
 } else {
-  // pedido criado mas sem link — contactar suporte
+  // pedido criado mas sem link — verificar config Stripe no tenant
 }
 ```
-
-Após pagamento, o Stripe notifica via webhook e o pedido no Odoo é confirmado automaticamente.
 
 As URLs de retorno configuradas:
 - **Sucesso:** `https://stg.meajudamaia.com/demo/?payment=success`
@@ -389,18 +379,18 @@ As URLs de retorno configuradas:
 
 ```js
 const state = {
-  calcId:        null,    // ID do cálculo actual (actualizar após recalculate!)
-  calcResult:    null,    // resposta completa do /calc ou /recalculate (já em raw.result)
-  selectedIds:   new Set(), // IDs das dietas seleccionadas
-  mixPercentage: 100,     // 100 | 50 | 25
-  period:        "fortnight", // "fortnight" | "monthly"
-  freight:       null,    // resposta do /freight ou null
-  petData: {              // dados do formulário
+  calcId:        null,      // actualizar após recalculate!
+  calcResult:    null,      // já em raw.result após recalculate
+  selectedIds:   new Set(),
+  mixPercentage: 100,       // 100 | 50 | 25
+  period:        "fortnight",
+  freight:       null,
+  petData: {
     pet_name:      "",
     partner_name:  "",
     partner_email: "",
     partner_phone: "",
-    nif:           "",
+    cpf:           "",
     cep:           "",
   },
 }
@@ -423,9 +413,7 @@ const headers = {
 
 async function calcularPlano(dadosPet) {
   const res = await fetch(`${API_BASE}/api/v1/calc`, {
-    method:  "POST",
-    headers,
-    body:    JSON.stringify(dadosPet),
+    method: "POST", headers, body: JSON.stringify(dadosPet),
   })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
@@ -433,9 +421,8 @@ async function calcularPlano(dadosPet) {
 
 async function recalcular({ calcId, productIds, mixPercentage = 100 }) {
   const res = await fetch(`${API_BASE}/api/v1/calc/recalculate`, {
-    method:  "POST",
-    headers,
-    body:    JSON.stringify({
+    method: "POST", headers,
+    body: JSON.stringify({
       calc_id:         calcId,
       products_id:     productIds,   // atenção: products_id, não product_ids
       mix_percentages: [mixPercentage],
@@ -444,30 +431,27 @@ async function recalcular({ calcId, productIds, mixPercentage = 100 }) {
   if (!res.ok) throw new Error(await res.text())
   const raw = await res.json()
   return {
-    calcId:  raw.calc_id || raw.result?.calc_id || calcId,
-    result:  raw.result  || raw,
+    calcId: raw.calc_id || raw.result?.calc_id || calcId,
+    result: raw.result  || raw,
   }
 }
 
 async function calcularFrete({ cep, calcId }) {
   const res = await fetch(`${API_BASE}/api/v1/calc/freight`, {
-    method:  "POST",
-    headers,
-    body:    JSON.stringify({ cep, calc_id: calcId }),
+    method: "POST", headers, body: JSON.stringify({ cep, calc_id: calcId }),
   })
   if (!res.ok) return null
-  return res.json()   // { value, prazo, carrier_name }
+  return res.json()
 }
 
 async function criarPedido({ calcId, productIds, mixPercentage, period, tutor, cep }) {
   const res = await fetch(`${API_BASE}/api/v1/orders`, {
-    method:  "POST",
-    headers,
-    body:    JSON.stringify({
+    method: "POST", headers,
+    body: JSON.stringify({
       calc_id:         calcId,
-      products_id:     productIds,
+      product_ids:     productIds,
       mix_percentages: [mixPercentage],
-      period:          period,        // 15 ou 30
+      period,
       partner_email:   tutor.email,
       partner_name:    tutor.name,
       partner_phone:   tutor.phone,
@@ -483,64 +467,28 @@ async function criarPedido({ calcId, productIds, mixPercentage, period, tutor, c
   if (!res.ok) throw new Error(await res.text())
   const raw = await res.json()
   const o   = raw.order || raw
-  return {
-    orderId:     o.id,
-    paymentLink: o.payment_link || o.link_stripe,
-  }
+  return { orderId: o.id, paymentLink: o.payment_link || o.link_stripe }
 }
 
-// ── Fluxo completo ────────────────────────────────────────────────────────────
+// Fluxo completo
 async function fluxoCompleto() {
-  // 1. Calcular
   const calc = await calcularPlano({
-    birth_date:    "2021-04-10",
-    weight:        4.2,
-    size:          "mini",
-    fitness:       "normal",
-    activity:      "normal",
-    castrated:     true,
-    pet_name:      "Bolinha",
-    tutor_name:    "Ana Ferreira",
-    tutor_email:   "ana@email.pt",
-    phone:         "+351912345678",
-    nif:           "234567891",
-    cep:           "1000-001",
-    package_sizes: [300],
-    periods:       [15],
-    mix_percentages: [100],
+    birth_date: "2021-04-10", weight: 4.2, size: "mini",
+    fitness: "normal", activity: "normal", castrated: true,
+    pet_name: "Bolinha", tutor_name: "Ana Ferreira",
+    tutor_email: "ana@email.pt", phone: "+351912345678",
+    cpf: "234567891", cep: "1000-001",
+    package_sizes: [300], periods: [15], mix_percentages: [100],
   })
-  console.log("calc_id:", calc.calc_id)
 
-  // 2. (Opcional) Recalcular só com Turkey
-  const recalc = await recalcular({
-    calcId:       calc.calc_id,
-    productIds:   [13670],
-    mixPercentage: 100,
-  })
-  console.log("novo calc_id:", recalc.calcId)
-
-  // 3. (Opcional) Frete
-  const frete = await calcularFrete({ cep: "1000-001", calcId: recalc.calcId })
-  console.log("frete:", frete?.value, "EUR")
-
-  // 4. Criar pedido
+  const recalc = await recalcular({ calcId: calc.calc_id, productIds: [13670] })
+  const frete  = await calcularFrete({ cep: "1000-001", calcId: recalc.calcId })
   const pedido = await criarPedido({
-    calcId:       recalc.calcId,
-    productIds:   [13670],
-    mixPercentage: 100,
-    period:       15,
-    tutor: {
-      name:    "Ana Ferreira",
-      email:   "ana@email.pt",
-      phone:   "+351912345678",
-      petName: "Bolinha",
-    },
+    calcId: recalc.calcId, productIds: [13670], mixPercentage: 100, period: 15,
+    tutor: { name: "Ana Ferreira", email: "ana@email.pt",
+             phone: "+351912345678", petName: "Bolinha" },
     cep: "1000-001",
   })
-  console.log("order_id:", pedido.orderId)
-  console.log("payment_link:", pedido.paymentLink)
-
-  // 5. Redirecionar
   // window.location.href = pedido.paymentLink
 }
 ```
@@ -583,93 +531,23 @@ def frete(cep: str, calc_id: int) -> dict | None:
     return r.json() if r.is_success else None
 
 
-def criar_pedido(
-    calc_id: int,
-    product_ids: list,
-    mix_percentage: int,
-    period: int,
-    tutor_name: str,
-    tutor_email: str,
-    tutor_phone: str,
-    pet_name: str,
-    cep: str | None = None,
-) -> dict:
+def criar_pedido(calc_id, product_ids, mix_percentage, period,
+                 tutor_name, tutor_email, tutor_phone, pet_name, cep=None) -> dict:
     payload = {
-        "calc_id":         calc_id,
-        "products_id":     product_ids,
-        "mix_percentages": [mix_percentage],
-        "period":          period,
-        "partner_email":   tutor_email,
-        "partner_name":    tutor_name,
-        "partner_phone":   tutor_phone,
-        "tutor_email":     tutor_email,
-        "tutor_name":      tutor_name,
-        "tutor_phone":     tutor_phone,
-        "pet_name":        pet_name,
-        "order_type":      "trial",
-        "delivery_number": 1,
+        "calc_id": calc_id, "product_ids": product_ids,
+        "mix_percentages": [mix_percentage], "period": period,
+        "partner_email": tutor_email, "partner_name": tutor_name,
+        "partner_phone": tutor_phone, "tutor_email": tutor_email,
+        "tutor_name": tutor_name, "tutor_phone": tutor_phone,
+        "pet_name": pet_name, "order_type": "trial", "delivery_number": 1,
     }
     if cep:
         payload["cep"] = cep
-
     r = httpx.post(f"{API_BASE}/api/v1/orders", json=payload, headers=HEADERS, timeout=60)
     r.raise_for_status()
     raw = r.json()
     o   = raw.get("order") or raw
-    return {
-        "order_id":     o.get("id"),
-        "payment_link": o.get("payment_link") or o.get("link_stripe"),
-    }
-
-
-# ── Fluxo completo ────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    # 1. Calcular
-    calc = calcular({
-        "birth_date":      "2021-04-10",
-        "weight":          4.2,
-        "size":            "mini",
-        "fitness":         "normal",
-        "activity":        "normal",
-        "castrated":       True,
-        "pet_name":        "Bolinha",
-        "tutor_name":      "Ana Ferreira",
-        "tutor_email":     "ana@email.pt",
-        "phone":           "+351912345678",
-        "nif":             "234567891",
-        "cep":             "1000-001",
-        "package_sizes":   [300],
-        "periods":         [15],
-        "mix_percentages": [100],
-    })
-    print("calc_id:", calc["calc_id"])
-    dietas = calc["plans"]["300"]
-    print("dietas:", [d["title"] for d in dietas])
-
-    # 2. (Opcional) Recalcular — só primeira dieta
-    recalc = recalcular(calc["calc_id"], [dietas[0]["id"]])
-    print("recalc calc_id:", recalc["calc_id"])
-
-    # 3. (Opcional) Frete
-    envio = frete("1000-001", recalc["calc_id"])
-    print("frete:", envio)
-
-    # 4. Criar pedido
-    pedido = criar_pedido(
-        calc_id=recalc["calc_id"],
-        product_ids=[dietas[0]["id"]],
-        mix_percentage=100,
-        period=15,
-        tutor_name="Ana Ferreira",
-        tutor_email="ana@email.pt",
-        tutor_phone="+351912345678",
-        pet_name="Bolinha",
-        cep="1000-001",
-    )
-    print("order_id:", pedido["order_id"])
-    print("payment_link:", pedido["payment_link"])
-
-    # 5. Redirecionar o utilizador para pedido["payment_link"]
+    return {"order_id": o.get("id"), "payment_link": o.get("payment_link") or o.get("link_stripe")}
 ```
 
 ---
@@ -680,77 +558,34 @@ if __name__ == "__main__":
 API_KEY="SUA_API_KEY_AQUI"
 BASE="https://stg.meajudamaia.com"
 
-# ── 1. Calcular ───────────────────────────────────────────────────────────────
-curl -s -X POST "$BASE/api/v1/calc" \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "birth_date":    "2021-04-10",
-    "weight":        4.2,
-    "size":          "mini",
-    "fitness":       "normal",
-    "activity":      "normal",
-    "castrated":     true,
-    "pet_name":      "Bolinha",
-    "tutor_name":    "Ana Ferreira",
-    "tutor_email":   "ana@email.pt",
-    "phone":         "+351912345678",
-    "nif":           "234567891",
-    "cep":           "1000-001",
-    "package_sizes": [300],
-    "periods":       [15],
-    "mix_percentages": [100]
-  }' | python3 -m json.tool
-# → guarda calc_id da resposta
+# 1. Calcular
+CALC_ID=$(curl -s -X POST "$BASE/api/v1/calc" \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{"birth_date":"2021-04-10","weight":4.2,"size":"mini","fitness":"normal",
+       "activity":"normal","castrated":true,"pet_name":"Bolinha",
+       "tutor_name":"Ana Ferreira","tutor_email":"ana@email.pt",
+       "phone":"+351912345678","cpf":"234567891","cep":"1000-001",
+       "package_sizes":[300],"periods":[15],"mix_percentages":[100]}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['calc_id'])")
+echo "calc_id: $CALC_ID"
 
-CALC_ID=115   # substituir pelo valor real
+# 2. Recalcular (opcional)
+NEW_CALC_ID=$(curl -s -X POST "$BASE/api/v1/calc/recalculate" \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d "{\"calc_id\":$CALC_ID,\"products_id\":[13670],\"mix_percentages\":[100]}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('calc_id') or d.get('result',{}).get('calc_id'))")
+echo "new_calc_id: $NEW_CALC_ID"
 
-# ── 2. (Opcional) Recalcular ──────────────────────────────────────────────────
-curl -s -X POST "$BASE/api/v1/calc/recalculate" \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"calc_id\":         $CALC_ID,
-    \"products_id\":     [13670],
-    \"mix_percentages\": [100]
-  }" | python3 -m json.tool
-# → guarda o novo calc_id de raw.calc_id
-
-NEW_CALC_ID=116   # substituir pelo valor real
-
-# ── 3. (Opcional) Frete ───────────────────────────────────────────────────────
-curl -s -X POST "$BASE/api/v1/calc/freight" \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"cep\": \"1000-001\", \"calc_id\": $NEW_CALC_ID}" | python3 -m json.tool
-
-# ── 4. Criar pedido ───────────────────────────────────────────────────────────
+# 3. Criar pedido
 curl -s -X POST "$BASE/api/v1/orders" \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"calc_id\":         $NEW_CALC_ID,
-    \"products_id\":     [13670],
-    \"mix_percentages\": [100],
-    \"period\":          15,
-    \"partner_email\":   \"ana@email.pt\",
-    \"partner_name\":    \"Ana Ferreira\",
-    \"partner_phone\":   \"+351912345678\",
-    \"tutor_email\":     \"ana@email.pt\",
-    \"tutor_name\":      \"Ana Ferreira\",
-    \"tutor_phone\":     \"+351912345678\",
-    \"pet_name\":        \"Bolinha\",
-    \"order_type\":      \"trial\",
-    \"delivery_number\": 1,
-    \"cep\":             \"1000-001\"
-  }" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-o = d.get('order', d)
-print('order_id:    ', o.get('id'))
-print('payment_link:', o.get('payment_link') or o.get('link_stripe'))
-"
-# → redirecionar o utilizador para payment_link
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d "{\"calc_id\":$NEW_CALC_ID,\"product_ids\":[13670],\"mix_percentages\":[100],
+       \"period\":15,\"partner_email\":\"ana@email.pt\",\"partner_name\":\"Ana Ferreira\",
+       \"partner_phone\":\"+351912345678\",\"tutor_email\":\"ana@email.pt\",
+       \"tutor_name\":\"Ana Ferreira\",\"tutor_phone\":\"+351912345678\",
+       \"pet_name\":\"Bolinha\",\"order_type\":\"trial\",\"delivery_number\":1,
+       \"cep\":\"1000-001\"}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); o=d.get('order',d); print('payment_link:', o.get('payment_link') or o.get('link_stripe'))"
 ```
 
 ---
@@ -759,12 +594,93 @@ print('payment_link:', o.get('payment_link') or o.get('link_stripe'))
 
 | Erro | Causa | Solução |
 |---|---|---|
-| `422 MISSING_REQUIRED_ORDER_FIELDS ["tutor_phone","cpf","tutor_name"]` | `tutor_name`, `phone` ou `nif` **não foram enviados no `/calc`** | Incluir esses campos no payload do `POST /api/v1/calc` |
-| `422 VALIDATION_ERROR "Informe calc_id + products_id"` | Campo enviado como `product_ids` em vez de `products_id` | Usar `products_id` (com `s`) no recalculate e no orders |
-| `502 company inconsistencies pricelist` | Pricelist de empresa errada | Configurado automaticamente pelo gateway via tenant config |
+| `422 MISSING_REQUIRED_ORDER_FIELDS ["tutor_phone","cpf","tutor_name"]` | Campos não enviados no `/calc` | Incluir `tutor_name`, `phone`, `cpf` no payload do `POST /api/v1/calc` |
+| `422 VALIDATION_ERROR "Informe calc_id + products_id"` | Campo errado no recalculate | `/recalculate` usa `products_id` (com `s`); `/orders` usa `product_ids` (sem `s`) |
+| `502 company inconsistencies pricelist` | Pricelist de empresa errada | Automático via tenant — verificar se token corresponde ao tenant certo |
+| Recalculate devolve valores zerados | Bug antigo (corrigido): `company_id` não propagado | Garantir versão do plan-builder ≥ fix de Maio/2026 |
 | Resposta do recalculate sem `plans` | Leitura da raiz em vez de `raw.result` | Usar `raw.result \|\| raw` |
-| `payment_link` vazio ou nulo | `raw.order.payment_link` em vez de `raw.payment_link` | Usar `(raw.order \|\| raw).payment_link` |
-| `401 API key inválida ou revogada` | API key errada ou inactiva | Verificar o header `Authorization: Bearer <SUA_API_KEY>` |
+| `payment_link` nulo na resposta de orders | `stripe_secret_key` não configurado no tenant | Configurar chave Stripe no tenant registry |
+| `401 Token inválido` | Token errado ou inactivo | Verificar `Authorization: Bearer <TOKEN>` |
+
+---
+
+## 13. Configuração de campos de checkout por tenant (`checkout_fields`)
+
+Cada tenant pode configurar quais campos do formulário são obrigatórios, opcionais ou ocultados.
+
+### Campos configuráveis
+
+| Chave | Campo de API | Descrição |
+|---|---|---|
+| `tax_id` | `cpf` | NIF / CPF do tutor |
+| `phone` | `phone` | Telefone do tutor |
+| `pet_name` | `pet_name` | Nome do pet |
+| `tutor_name` | `tutor_name` | Nome do tutor |
+| `tutor_email` | `tutor_email` | Email do tutor |
+
+### Modos disponíveis
+
+| Modo | Frontend | Backend |
+|---|---|---|
+| `required` | Campo visível com `required` | Validado — pedido falha se ausente |
+| `optional` | Campo visível sem `required` | Não validado |
+| `hidden` | Campo ocultado | Ignorado |
+
+Default: `required` se não configurado.
+
+```json
+{
+  "checkout_fields": {
+    "tax_id":      "optional",
+    "phone":       "required",
+    "pet_name":    "required",
+    "tutor_name":  "required",
+    "tutor_email": "required"
+  }
+}
+```
+
+---
+
+## 14. Endpoints adicionais
+
+### Carrinho multi-pet
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/v1/calc/cart/{cart_id}` | Recuperar todos os cálculos de um carrinho |
+| `POST` | `/api/v1/calc/cart/freight` | Calcular frete para carrinho multi-pet (`{ cart_id, cep }`) |
+
+### Pagamento
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `POST` | `/api/v1/payment/session` | Criar sessão de pagamento (Stripe ou Malga) |
+| `GET` | `/api/v1/payment/session/{session_id}` | Consultar estado de sessão de pagamento |
+| `GET` | `/api/v1/payment/config` | Configuração pública do gateway do tenant |
+| `GET` | `/api/v1/payment/checkout` | Dados para montar página de checkout (Stripe: `publishable_key`, URLs) |
+
+### Pedidos
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/v1/orders` | Listar pedidos do tenant (paginado: `?limit=50&offset=0`) |
+| `GET` | `/api/v1/orders/{order_id}` | Detalhe de um pedido |
+| `PATCH` | `/api/v1/orders/{order_id}/status` | Atualizar status (`draft→sale→done→cancel`) |
+
+### Produtos
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/v1/products` | Listar produtos do tenant |
+| `GET` | `/api/v1/products/{product_id}` | Detalhe de um produto |
+
+### Autenticação (JWT para dashboard)
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `POST` | `/api/v1/auth/login` | Login com credenciais Odoo → JWT |
+| `POST` | `/api/v1/auth/refresh` | Renovar token JWT |
 
 ---
 
@@ -773,3 +689,4 @@ print('payment_link:', o.get('payment_link') or o.get('link_stripe'))
 - **Demo ao vivo:** https://stg.meajudamaia.com/demo/
 - **Swagger UI:** https://stg.meajudamaia.com/gw/docs
 - **Swagger spec (JSON):** https://stg.meajudamaia.com/gw/openapi.json
+- **Repositório demo:** https://github.com/wrspet/aquinta-pt-demo
