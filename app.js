@@ -164,13 +164,14 @@ document.getElementById("form-pet").addEventListener("submit", async e => {
 
   showLoading("A calcular o plano nutricional...");
   try {
-    const result = await api("POST", "/api/v1/calc", pet);
+    const result = await api("POST", "/api/v1/calc", { ...pet, mix_percentages: [100, 50, 25] });
     state.calcResult = result;
     state.calcId = result.calc_id;
     state.period = "fortnight";
     state.editing = false;
     state.mixPercentage = 100;
     state.selectedIds = new Set((result.plans?.["300"] || []).map(p => p.id));
+    updateAvailableMixOptions(result);
     renderResults();
     showStep("step-plans");
     if (cep) loadFreight();
@@ -221,6 +222,35 @@ function getDietData(productId) {
     kcal_per_kg:    product.product_energy,
     period_label:   `${fortnightDays} dias`,
   };
+}
+
+// Deriva as opções de mix disponíveis a partir da resposta do backend
+// e mostra/esconde os botões correspondentes.
+function updateAvailableMixOptions(result) {
+  const available = new Set();
+  const plans = result?.plans || {};
+  for (const size of Object.keys(plans)) {
+    for (const product of (plans[size] || [])) {
+      for (const variant of (product.variants || [])) {
+        const pct = parseInt(variant.percentage);
+        if (pct > 0) available.add(pct);
+      }
+    }
+  }
+  if (available.size === 0) available.add(100);
+
+  document.querySelectorAll("#mix-options .opt").forEach(btn => {
+    const val = parseInt(btn.dataset.val);
+    btn.style.display = available.has(val) ? "" : "none";
+  });
+
+  // Se o mix actual já não está disponível, reset para 100
+  if (!available.has(state.mixPercentage)) {
+    state.mixPercentage = 100;
+    document.querySelectorAll("#mix-options .opt").forEach(b => {
+      b.classList.toggle("selected", parseInt(b.dataset.val) === 100);
+    });
+  }
 }
 
 function renderResults() {
@@ -337,13 +367,14 @@ document.getElementById("btn-confirm-edit").addEventListener("click", async () =
     const raw = await api("POST", "/api/v1/calc/recalculate", {
       calc_id:         state.calcId,
       products_id:     [...state.selectedIds],
-      mix_percentages: [state.mixPercentage],
+      mix_percentages: [state.mixPercentage, 100],
     });
     const result = raw.result || raw;
     const newCalcId = raw.calc_id || result.calc_id;
     if (newCalcId) state.calcId = newCalcId;
     state.calcResult = result;
     state.editing = false;
+    updateAvailableMixOptions(result);
     renderResults();
     showStep("step-plans");
     if (state.petData.cep) loadFreight();
