@@ -409,29 +409,86 @@ Para cenários com múltiplos pets (usando `cart_id`):
 }
 ```
 
-### Como extrair o link
+### Como extrair os dados de pagamento
+
+A resposta varia por tenant (`payment_gw`):
+
+**PT (Stripe — Payment Element inline):**
+```json
+{
+  "stripe_client_secret":    "pi_3R..._secret_...",
+  "stripe_publishable_key":  "pk_live_...",
+  "stripe_payment_intent_id": "pi_3R...",
+  "payment_link": "",
+  "orders": [{ "order": { "id": 1082, "stripe_client_secret": "pi_..." } }]
+}
+```
+
+**BR (Malga — redirect):**
+```json
+{
+  "payment_link": "https://stg.meajudamaia.com/checkout/payment?session_id=...",
+  "link_malga":   "https://stg.meajudamaia.com/checkout/payment?session_id=...",
+  "orders": [{ "order": { "id": 1081, "payment_link": "..." } }]
+}
+```
 
 ```js
-const raw  = await api("POST", "/api/v1/orders", payload)
-const o    = raw.order || raw
-const link = o.payment_link || o.link_stripe
+const raw            = await api("POST", "/api/v1/orders", payload)
+const o              = raw.order || raw.orders?.[0]?.order || raw
+const clientSecret   = raw.stripe_client_secret || o.stripe_client_secret
+const publishableKey = raw.stripe_publishable_key
 ```
 
 ---
 
-## 9. Passo 7 — Redirecionar para o Stripe
+## 9. Passo 7 — Checkout (Stripe Payment Element ou Malga redirect)
+
+O fluxo é diferente por gateway:
+
+### PT — Stripe Payment Element (checkout inline, sem sair do site)
+
+Requer `stripe.js` carregado (`<script src="https://js.stripe.com/v3/">`).
 
 ```js
-if (link) {
-  window.location.href = link
-} else {
-  // pedido criado mas sem link — verificar config Stripe no tenant
+if (clientSecret && publishableKey) {
+  const stripe   = Stripe(publishableKey)
+  const elements = stripe.elements({ clientSecret, appearance: { theme: "stripe" } })
+
+  // Montar o Payment Element num div vazio
+  const paymentEl = elements.create("payment", { layout: "tabs" })
+  paymentEl.mount("#payment-element")
+
+  // No submit do formulário:
+  const { error } = await stripe.confirmPayment({
+    elements,
+    confirmParams: { return_url: window.location.href },
+    redirect: "if_required",   // fica na página se não precisar de redirect
+  })
+
+  if (error) {
+    // Mostrar erro ao utilizador
+    console.error(error.message)
+  } else {
+    // Pagamento concluído — mostrar ecrã de sucesso
+    // O webhook Stripe (payment_intent.succeeded) confirma o pedido no Odoo
+  }
 }
 ```
 
-As URLs de retorno configuradas:
-- **Sucesso:** `https://stg.meajudamaia.com/demo/?payment=success`
-- **Cancelar:** `https://stg.meajudamaia.com/demo/?payment=cancel`
+> **Webhook Stripe:** regista `https://stg.meajudamaia.com/api/stripe_event` no Stripe Dashboard
+> (Developers → Webhooks → Add endpoint) com os eventos `payment_intent.succeeded` e
+> `payment_intent.payment_failed`. O `whsec_...` gerado vai para `STRIPE_WEBHOOK_SECRET` no `.env`
+> do plan_builder_refactor. O webhook confirma o pedido no Odoo automaticamente.
+
+### BR — Malga (redirect)
+
+```js
+const link = raw.payment_link || o.payment_link || o.link_malga
+if (link) {
+  window.location.href = link
+}
+```
 
 ---
 
