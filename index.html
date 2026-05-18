@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Aquinta — Plano Nutricional para o teu Pet</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://js.stripe.com/v3/" defer></script>
 </head>
 <body>
 
@@ -153,7 +154,35 @@
       </div>
       <div id="coupon-feedback" class="coupon-feedback" style="display:none"></div>
       <button class="btn-primary" id="btn-pay">Pagar →</button>
-      <p class="hint">Serás redireccionado para o checkout seguro.</p>
+      <p class="hint">Pagamento seguro processado pela Stripe.</p>
+    </div>
+  </div>
+
+  <!-- STEP: Success -->
+  <div id="step-success" class="step">
+    <div class="card center">
+      <div class="success-icon">✅</div>
+      <h2>Encomenda Confirmada!</h2>
+      <p id="success-msg" class="success-msg">O teu plano nutricional foi criado com sucesso. Receberás um email de confirmação em breve.</p>
+      <button class="btn-primary" onclick="location.reload()">Nova simulação</button>
+    </div>
+  </div>
+
+  <!-- MODAL: Stripe Payment Element -->
+  <div id="stripe-modal-overlay" class="stripe-overlay" style="display:none">
+    <div class="stripe-modal">
+      <button class="stripe-modal-close" onclick="closeStripeModal()" title="Fechar">✕</button>
+      <div class="stripe-modal-header">
+        <span class="stripe-modal-logo">🐾 Aquinta</span>
+        <div id="stripe-amount-label" class="stripe-amount-label"></div>
+      </div>
+      <div id="stripe-payment-element"></div>
+      <div id="stripe-error-msg" class="stripe-error" style="display:none"></div>
+      <button id="stripe-submit-btn" class="btn-primary stripe-submit-btn">
+        <span id="stripe-submit-label">Pagar agora</span>
+        <span id="stripe-submit-spinner" class="stripe-btn-spinner" style="display:none">⏳</span>
+      </button>
+      <p class="stripe-secure-note">🔒 Pagamento seguro via Stripe</p>
     </div>
   </div>
 

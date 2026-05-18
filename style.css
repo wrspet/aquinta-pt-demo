@@ -570,3 +570,108 @@ h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
 }
 .admin-feedback.ok  { background: #ecfdf5; color: #065f46; }
 .admin-feedback.err { background: #fef2f2; color: #991b1b; }
+
+/* ── Stripe Payment Modal ─────────────────────────────────────────────────── */
+.stripe-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.stripe-modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 24px 24px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  position: relative;
+  animation: slideUp 0.25s ease;
+}
+@keyframes slideUp { from { transform: translateY(24px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+
+.stripe-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.stripe-modal-close:hover { background: #f3f4f6; color: #374151; }
+
+.stripe-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.stripe-modal-logo {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+.stripe-amount-label {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--brand-dark, #2563eb);
+}
+
+#stripe-payment-element {
+  margin-bottom: 16px;
+  min-height: 120px;
+}
+
+.stripe-error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  margin-bottom: 14px;
+}
+
+.stripe-submit-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 1rem;
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+.stripe-btn-spinner { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+.stripe-secure-note {
+  text-align: center;
+  font-size: 0.78rem;
+  color: #9ca3af;
+  margin: 0;
+}
+
+/* ── Success screen ───────────────────────────────────────────────────────── */
+.success-icon {
+  font-size: 3.5rem;
+  margin-bottom: 16px;
+}
+.success-msg {
+  color: #4b5563;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}

@@ -471,8 +471,76 @@ function buildOrderSummary() {
   `;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STRIPE PAYMENT ELEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _stripe = null;
+let _stripeElements = null;
+
+function closeStripeModal() {
+  document.getElementById("stripe-modal-overlay").style.display = "none";
+  _stripeElements = null;
+}
+
+async function openStripeCheckout({ clientSecret, publishableKey, amountLabel }) {
+  if (!window.Stripe) {
+    showError("Stripe.js não carregou. Verifica a ligação à internet e recarrega.");
+    return;
+  }
+  _stripe = Stripe(publishableKey);
+
+  document.getElementById("stripe-amount-label").textContent = amountLabel;
+  document.getElementById("stripe-error-msg").style.display = "none";
+  document.getElementById("stripe-payment-element").innerHTML = "";
+  document.getElementById("stripe-modal-overlay").style.display = "flex";
+
+  const appearance = {
+    theme: "stripe",
+    variables: {
+      colorPrimary: "#2d6a4f",
+      borderRadius: "8px",
+      fontFamily: "system-ui, -apple-system, sans-serif",
+    },
+  };
+  _stripeElements = _stripe.elements({ clientSecret, appearance });
+  const paymentEl = _stripeElements.create("payment", { layout: "tabs" });
+  paymentEl.mount("#stripe-payment-element");
+}
+
+document.getElementById("stripe-submit-btn").addEventListener("click", async () => {
+  if (!_stripe || !_stripeElements) return;
+  const btn   = document.getElementById("stripe-submit-btn");
+  const label = document.getElementById("stripe-submit-label");
+  const spin  = document.getElementById("stripe-submit-spinner");
+  const errEl = document.getElementById("stripe-error-msg");
+
+  btn.disabled = true;
+  label.textContent = "A processar...";
+  spin.style.display = "inline-block";
+  errEl.style.display = "none";
+
+  const { error } = await _stripe.confirmPayment({
+    elements: _stripeElements,
+    confirmParams: { return_url: window.location.href },
+    redirect: "if_required",
+  });
+
+  if (error) {
+    errEl.textContent = error.message || "Erro no pagamento. Tenta novamente.";
+    errEl.style.display = "block";
+    btn.disabled = false;
+    label.textContent = "Pagar agora";
+    spin.style.display = "none";
+  } else {
+    // Pagamento confirmado — o webhook tratará a confirmação no Odoo
+    closeStripeModal();
+    showStep("step-success");
+  }
+});
+
 document.getElementById("btn-pay").addEventListener("click", async () => {
-  showLoading("A criar encomenda e gerar link de pagamento...");
+  showLoading("A criar encomenda...");
   try {
     const payload = {
       calc_id:         state.calcId,
@@ -493,13 +561,28 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
     if (state.petData.cpf && fieldMode("tax_id") !== "hidden") payload.cpf = state.petData.cpf;
     if (state.couponCode)   payload.coupon_code = state.couponCode;
 
-    const raw  = await api("POST", "/api/v1/orders", payload);
-    const o    = raw.order || raw;
-    const link = o.payment_link || o.link_stripe;
-    if (link) {
-      window.location.href = link;
+    const raw = await api("POST", "/api/v1/orders", payload);
+    const o   = raw.order || raw.orders?.[0]?.order || raw.orders?.[0] || raw;
+
+    const clientSecret   = raw.stripe_client_secret || o.stripe_client_secret;
+    const publishableKey = raw.stripe_publishable_key;
+
+    if (clientSecret && publishableKey) {
+      // PT/Stripe — modal de pagamento inline
+      showStep("step-confirm");
+      const totalEur = (o.totals?.discounted || o.totals?.total || 0);
+      const amountLabel = totalEur
+        ? `${Number(totalEur).toLocaleString("pt-PT", { style: "currency", currency: "EUR" })}`
+        : "";
+      await openStripeCheckout({ clientSecret, publishableKey, amountLabel });
     } else {
-      showError("Encomenda criada mas sem link de pagamento. Contacta o suporte.");
+      // BR/Malga — redirect para link de pagamento
+      const link = raw.payment_link || o.payment_link || o.link_malga;
+      if (link) {
+        window.location.href = link;
+      } else {
+        showError("Encomenda criada mas sem link de pagamento. Contacta o suporte.");
+      }
     }
   } catch (err) {
     showError("Erro ao criar encomenda: " + err.message);
