@@ -569,7 +569,7 @@ document.getElementById("btn-pay").addEventListener("click", async () => {
 
     if (clientSecret && publishableKey) {
       // PT/Stripe — modal de pagamento inline
-      showStep("step-confirm");
+      showStep("step-order");
       const totalEur = (o.totals?.discounted || o.totals?.total || 0);
       const amountLabel = totalEur
         ? `${Number(totalEur).toLocaleString("pt-PT", { style: "currency", currency: "EUR" })}`
